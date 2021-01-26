@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,9 +83,14 @@ func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, er
 		job = mw(job)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	p := &Pool{
-		job: job,
-		cfg: &cfg,
+		job:     job,
+		cfg:     &cfg,
+		ctx:     ctx,
+		cancel:  cancel,
+		stopped: make(chan struct{}),
+		done:    make(chan struct{}),
 	}
 
 	return p, nil
@@ -105,10 +111,24 @@ type Pool struct {
 	job     Job
 	cfg     *Config
 	workers []*worker
+
+	// Current pool state.
 	started bool
 	closed  bool
-	mx      sync.RWMutex
-	close   sync.Once
+
+	// Pool context that will be the
+	// parent ctx for the workers.
+	ctx    context.Context
+	cancel func()
+
+	// Holds the number of running workers
+	// When a worker stops it will send a
+	// signal the channel.
+	running uint64
+	stopped chan struct{}
+	done    chan struct{}
+
+	mx sync.RWMutex
 }
 
 // Start launches the workers and keeps them running until the pool is closed.
@@ -130,6 +150,15 @@ func (p *Pool) Start() error {
 	for i := 0; i < p.cfg.Initial; i++ {
 		p.workers = append(p.workers, p.newWorker())
 	}
+
+	go func() {
+		for range p.stopped {
+			if atomic.AddUint64(&p.running, ^uint64(0)) == 0 {
+				close(p.done)
+				close(p.stopped)
+			}
+		}
+	}()
 
 	return nil
 }
@@ -231,21 +260,26 @@ func (p *Pool) Close(ctx context.Context) error {
 		return ErrPoolClosed
 	}
 
-	// close the pool, the number of workers
-	// cannot change.
+	// close the pool to prevent
+	// new workers to be added.
 	p.closed = true
 
-	var wg sync.WaitGroup
-	for _, w := range p.workers {
-		wg.Add(1)
-		go func(w *worker) {
-			_ = w.stop(ctx)
-			wg.Done()
-		}(w)
+	// early exit if the pool
+	// is not running.
+	if !p.started {
+		return nil
 	}
-	wg.Wait()
 
-	return ctx.Err()
+	// cancel the pool context,
+	// all workers will stop.
+	p.cancel()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return nil
+	}
 }
 
 // CloseWIthTimeout displays the same behaviour as close, but
@@ -259,12 +293,15 @@ func (p *Pool) CloseWIthTimeout(timeout time.Duration) error {
 }
 
 func (p *Pool) newWorker() *worker {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(p.ctx)
 	w := &worker{
 		done:   make(chan struct{}),
 		cancel: cancel,
 	}
-	go w.work(ctx, p.job)
+
+	atomic.AddUint64(&p.running, 1)
+	go w.work(ctx, p.job, p.stopped)
+
 	return w
 }
 
@@ -275,9 +312,10 @@ type worker struct {
 	done     chan struct{}
 }
 
-func (w *worker) work(ctx context.Context, job Job) {
+func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
 	defer func() {
 		close(w.done)
+		stopped <- struct{}{}
 	}()
 	for {
 		select {

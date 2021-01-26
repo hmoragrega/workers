@@ -133,7 +133,7 @@ func TestPool_StartErrors(t *testing.T) {
 	t.Run("pool closed", func(t *testing.T) {
 		p := Must(New(dummyJob))
 
-		if err := p.Close(context.Background()); err != nil {
+		if err := p.CloseWIthTimeout(time.Second); err != nil {
 			t.Fatalf("unexpected error closing an uninitialized pool; got %+v", err)
 		}
 
