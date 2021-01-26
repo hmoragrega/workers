@@ -7,7 +7,7 @@ test: unit vet fmt
 
 .PHONY: unit
 unit:
-	@go test -race -v -coverpkg=./... -coverprofile=$(COVERAGE_FILE) ./...
+	@go test -race -v -covermode=count -coverpkg=./... -coverprofile=$(COVERAGE_FILE) ./...
 
 .PHONY: vet
 vet:

@@ -1,6 +1,7 @@
 # workers
 
-[![CI][ci-badge]][ci-url]
+[![ci][ci-badge]][ci-url]
+[![coverage][coverage-badge]][coverage-url]
 
 Go package that allows to run a pool of workers to run job concurrently in the background.
 
@@ -188,3 +189,6 @@ pool := workers.Must(workers.New(
 
 [ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg
 [ci-url]:   https://github.com/hmoragrega/workers/actions?query=workflow%3ACI
+
+[coverage-badge]: https://coveralls.io/repos/github/hmoragrega/workers/badge.svg
+[coverage-url]:   https://coveralls.io/github/hmoragrega/workers
