@@ -7,7 +7,7 @@ import (
 )
 
 // Elapsed is a job middleware that extends the simple counter
-// and calculates the the total time, average time and the last
+// and calculates the total time, average time and the last
 // time spent doing the job.
 type Elapsed struct {
 	Counter
@@ -20,7 +20,6 @@ type Elapsed struct {
 }
 
 func (e *Elapsed) Middleware() func(func(context.Context)) func(context.Context) {
-
 	e.mx.Lock()
 	if e.since == nil {
 		e.since = time.Since
@@ -36,6 +35,7 @@ func (e *Elapsed) Middleware() func(func(context.Context)) func(context.Context)
 			job(ctx)
 			elapsed := e.since(start)
 			count := e.Counter.Finished()
+
 			e.mx.Lock()
 			e.last = elapsed
 			e.total += e.last
