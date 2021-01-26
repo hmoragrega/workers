@@ -73,7 +73,7 @@ pool, err := workers.NewWithConfig(job, workers.Config{
 })
 ```
 
-#### Add more workers
+#### Adding workers
 To add a new worker to the pool you can call
 ```go
 if err := pool.More(); err != nil {
@@ -81,12 +81,12 @@ if err := pool.More(); err != nil {
 }
 ```
 The operation will fail if:
-- the maximum number of workers have been reached
+- the maximum number of workers has been reached
 - the pool is not configured; `New` was not called
 - the pool is closed; `Close` was called
 - the pool is not running; `Start` was not called
 
-#### Remove workers
+#### Removing workers
 There are two ways of removing workers
 
 1 - `StopOne` will remove one worker from the pool and **wait**
@@ -101,8 +101,8 @@ if err := pool.StopOne(ctx); err != nil {
 ```
 
 Please note that even if the context times out, and the method 
-return the context error the worker will still stop as soon as
-it completes the job.
+returns the context error, the worker will still stop eventually,
+as soon as it completes the job.
 
 2 - `Less` will remove one worker from the pool **without waiting**
 for the worker to stop. The worker will stop once it's completes 
@@ -115,7 +115,7 @@ if err := pool.Less(); err != nil {
 ```
 
 The operation will fail if:
-- the minimum number of workers have been reached
+- the minimum number of workers has been reached
 - the pool is not configured; `New` was not called
 - the pool is closed; `Close` was called
 - the pool is not running; `Start` was not called
@@ -135,12 +135,9 @@ A job is a simple function that accepts only one parameter, the worker context.
 type Job = func(ctx context.Context)
 ```
 
-There are two ways of extending the library functionality:
+There are two ways of extending the job functionality
 
 #### Job Middleware 
-Job functionality can be extended easily with the help of
-middlewares
-
 ```go
 // JobMiddleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
@@ -148,21 +145,23 @@ type JobMiddleware = func(job Job) Job
 ```
 
 Some example of middleware:
-* `Counter`: counts how many jobs start and finish.
-* `Elapsed`: extends the counter middleware providing also:
+* [Counter](middleware/counter.go) counts how many jobs start and finish.
+* [Elapsed](middleware/elapsed.go) extends the counter middleware providing also:
   - the total amount of time.
   - the average time.
   - the time of the last executed job.
-* `Wait`: allows to add a pause between jobs per each worker. 
+* [Wait](middleware/wait.go) allows to add a pause between worker jobs. (Job will
+still be running concurrently if there are more workers) 
 
 #### Job Wrapper
-Wrappers can also be used to extend the functionality of a job.
+A job wrapper is a function that can transform and extend the job signature. 
 
 Some common scenario that can benefit of job wrappers are jobs that
-may fail and return an error, we could, for example, retry the job 
+may fail and return an error. We could, for example, [retry the job](wrapper/retry.go) 
 a certain amount of times.  
 
-As an exercise let's log the job result with our favourite logging library.
+As an exercise let's log the job result with our favourite logging library using the 
+["WithError" wrapper](wrapper/with_error.go);
 ```go
 // jobLogger is a reusable logger wrapper for jobs.
 jobLogger := func(jobName string) func(error) {
@@ -176,11 +175,11 @@ jobLogger := func(jobName string) func(error) {
 }
 
 job := function(ctx context.Context) error {
-    err := someWork()
+    err := someWorkThatCanFail()
     return err
 }
 
 pool := workers.Must(workers.New(
-    wrapper.WithErrorResult(job, jobLogger("foo")
+    wrapper.WithError(job, jobLogger("foo")
 ))
 ```

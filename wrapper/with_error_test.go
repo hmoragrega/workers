@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestWithErrResultWrapper(t *testing.T) {
+func TestWithErrorWrapper(t *testing.T) {
 	var dummyErr = errors.New("dummy err")
 	tests := []struct {
 		name    string
@@ -31,7 +31,7 @@ func TestWithErrResultWrapper(t *testing.T) {
 			job := func(ctx context.Context) error {
 				return tc.want
 			}
-			wrapped := WithErrorResult(job, func(err error) {
+			wrapped := WithError(job, func(err error) {
 				got = err
 			})
 
