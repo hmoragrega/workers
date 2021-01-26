@@ -130,7 +130,7 @@ func (p *Pool) Start() error {
 	p.started = true
 
 	for i := 0; i < p.cfg.Initial; i++ {
-		p.addWorker()
+		p.workers = append(p.workers, p.newWorker())
 	}
 
 	return nil
@@ -154,7 +154,8 @@ func (p *Pool) More() error {
 		return ErrMaxReached
 	}
 
-	p.addWorker()
+	p.workers = append(p.workers, p.newWorker())
+
 	return nil
 }
 
@@ -257,19 +258,14 @@ func (p *Pool) CloseWIthTimeout(timeout time.Duration) error {
 	return p.Close(ctx)
 }
 
-// addWorker starts a new worker
-//
-// This method is not concurrently safe by it's own,
-// it must be protected.
-func (p *Pool) addWorker() {
+func (p *Pool) newWorker() *worker {
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &worker{
 		done:   make(chan struct{}),
 		cancel: cancel,
 	}
 	go w.work(ctx, p.job)
-
-	p.workers = append(p.workers, w)
+	return w
 }
 
 type worker struct {
