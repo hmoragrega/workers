@@ -29,6 +29,11 @@ func TestCounterMiddleware(t *testing.T) {
 	}
 
 	<-stop
+
+	if got, want := counter.Running(), uint64(1); got != want {
+		t.Fatalf("unexpected number of running; got %d, want %d", got, want)
+	}
+
 	if err := p.Close(context.Background()); err != nil {
 		t.Fatal("cannot stop pool", err)
 	}

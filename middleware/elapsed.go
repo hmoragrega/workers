@@ -19,6 +19,8 @@ type Elapsed struct {
 	since func(time.Time) time.Duration
 }
 
+// Middleware returns the job middleware that can be used
+// when creating a new pool.
 func (e *Elapsed) Middleware() func(func(context.Context)) func(context.Context) {
 	e.mx.Lock()
 	if e.since == nil {
@@ -45,6 +47,8 @@ func (e *Elapsed) Middleware() func(func(context.Context)) func(context.Context)
 	}
 }
 
+// Total returns the total time spent executing
+// all the job across all the workers.
 func (e *Elapsed) Total() time.Duration {
 	e.mx.RLock()
 	defer e.mx.RUnlock()
@@ -52,6 +56,7 @@ func (e *Elapsed) Total() time.Duration {
 	return e.total
 }
 
+// Last returns the time spent executing the last job.
 func (e *Elapsed) Last() time.Duration {
 	e.mx.RLock()
 	defer e.mx.RUnlock()
@@ -59,6 +64,8 @@ func (e *Elapsed) Last() time.Duration {
 	return e.last
 }
 
+// Average returns the average time that takes to
+// run the job.
 func (e *Elapsed) Average() time.Duration {
 	e.mx.RLock()
 	defer e.mx.RUnlock()

@@ -5,9 +5,8 @@ import (
 	"time"
 )
 
-// Wait will add a pause interval between calls
-// to the next job. The pause affects only jobs
-// between the same worker.
+// Wait will add a pause between calls to the next job.
+// The pause affects only jobs between the same worker.
 func Wait(wait time.Duration) func(func(context.Context)) func(context.Context) {
 	return func(job func(context.Context)) func(context.Context) {
 		var (
@@ -25,7 +24,9 @@ func Wait(wait time.Duration) func(func(context.Context)) func(context.Context) 
 		return func(ctx context.Context) {
 			select {
 			case <-ctx.Done():
-				ticker.Stop()
+				if ticker != nil {
+					ticker.Stop()
+				}
 				return
 			case <-tick:
 				job(ctx)
