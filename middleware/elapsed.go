@@ -19,31 +19,27 @@ type Elapsed struct {
 	since func(time.Time) time.Duration
 }
 
-// Middleware returns the job middleware that can be used
-// when creating a new pool.
-func (e *Elapsed) Middleware() func(func(context.Context)) func(context.Context) {
+// Next wraps the inner job to obtain job timing metrics.
+func (e *Elapsed) Next(next func(context.Context)) func(context.Context) {
 	e.mx.Lock()
 	if e.since == nil {
 		e.since = time.Since
 	}
 	e.mx.Unlock()
 
-	return func(job func(context.Context)) func(context.Context) {
-		// wrap incoming job with the counter.
-		job = e.Counter.Middleware()(job)
+	// wrap incoming job with the counter.
+	next = e.Counter.Next(next)
+	return func(ctx context.Context) {
+		start := time.Now()
+		next(ctx)
+		elapsed := e.since(start)
+		count := e.Counter.Finished()
 
-		return func(ctx context.Context) {
-			start := time.Now()
-			job(ctx)
-			elapsed := e.since(start)
-			count := e.Counter.Finished()
-
-			e.mx.Lock()
-			e.last = elapsed
-			e.total += e.last
-			e.average = e.total / time.Duration(count)
-			e.mx.Unlock()
-		}
+		e.mx.Lock()
+		e.last = elapsed
+		e.total += e.last
+		e.average = e.total / time.Duration(count)
+		e.mx.Unlock()
 	}
 }
 
