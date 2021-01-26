@@ -2,6 +2,7 @@
 
 [![ci][ci-badge]][ci-url]
 [![coverage][coverage-badge]][coverage-url]
+[![godoc][godoc-badge]][godoc-url]
 
 Go package that allows to run a pool of workers to run job concurrently in the background.
 
@@ -192,3 +193,6 @@ pool := workers.Must(workers.New(
 
 [coverage-badge]: https://coveralls.io/repos/github/hmoragrega/workers/badge.svg
 [coverage-url]:   https://coveralls.io/github/hmoragrega/workers
+
+[godoc-badge]: https://pkg.go.dev/badge/github.com/hmoragrega/workers.svg
+[godoc-url]:   https://pkg.go.dev/github.com/hmoragrega/workers
