@@ -267,7 +267,7 @@ func (p *Pool) addWorker() {
 		done:   make(chan struct{}),
 		cancel: cancel,
 	}
-	w.startWorking(ctx, p.job)
+	go w.work(ctx, p.job)
 
 	p.workers = append(p.workers, w)
 }
@@ -279,20 +279,18 @@ type worker struct {
 	done     chan struct{}
 }
 
-func (w *worker) startWorking(ctx context.Context, job Job) {
-	go func() {
-		defer func() {
-			close(w.done)
-		}()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				job(ctx)
-			}
-		}
+func (w *worker) work(ctx context.Context, job Job) {
+	defer func() {
+		close(w.done)
 	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			job(ctx)
+		}
+	}
 }
 
 func (w *worker) stop(ctx context.Context) error {
