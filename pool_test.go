@@ -256,10 +256,9 @@ func TestPool_Less(t *testing.T) {
 	})
 
 	t.Run("error returned if trying to go below the minimum number of workers", func(t *testing.T) {
-		ctx := context.Background()
 		p := Must(New(dummyJob))
 		t.Cleanup(func() {
-			if err := p.Close(context.Background()); err != nil {
+			if err := p.CloseWIthTimeout(time.Second); err != nil {
 				t.Fatal("cannot stop pool", err)
 			}
 		})
@@ -271,43 +270,8 @@ func TestPool_Less(t *testing.T) {
 			t.Fatalf("unexpected number of workers: got %d, want 1", current)
 		}
 
-		if got := p.StopOne(ctx); got != ErrMinReached {
+		if got := p.Less(); got != ErrMinReached {
 			t.Fatalf("got error %+v, want %v", got, ErrMinReached)
-		}
-		if got := p.Current(); got != 1 {
-			t.Fatalf("unexpected number of workers: got %d, want 1", got)
-		}
-	})
-
-	t.Run("context terminated while reducing number of workers", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-
-		block := make(chan struct{})
-		p := Must(New(func(_ context.Context) {
-			<-block
-		}))
-
-		t.Cleanup(func() {
-			// unblock the job so we can close without error
-			close(block)
-			if err := p.Close(context.Background()); err != nil {
-				t.Fatal("cannot stop pool", err)
-			}
-		})
-
-		if err := p.Start(); err != nil {
-			t.Fatalf("unexpected error starting pool: %+v", err)
-		}
-		if err := p.More(); err != nil {
-			t.Fatalf("unexpected error adding workers: %+v", err)
-		}
-		if current := p.Current(); current != 2 {
-			t.Fatalf("unexpected number of workers: got %d, want 2", current)
-		}
-
-		if got := p.StopOne(ctx); !errors.Is(got, context.Canceled) {
-			t.Fatalf("got error %+v, want %v", got, context.Canceled)
 		}
 		if got := p.Current(); got != 1 {
 			t.Fatalf("unexpected number of workers: got %d, want 1", got)
@@ -349,7 +313,7 @@ func TestPool_Close(t *testing.T) {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 
-		got := p.Close(context.Background())
+		got := p.CloseWIthTimeout(time.Second)
 		if !errors.Is(got, nil) {
 			t.Fatalf("unexpected error closing pool: %+v, want nil", got)
 		}
@@ -434,7 +398,7 @@ func BenchmarkPool(b *testing.B) {
 						b.Fatal("cannot add worker", err)
 					}
 					if math.Mod(float64(j+1), 10) == 0 {
-						if err := p.StopOne(ctx); err != nil {
+						if err := p.Less(); err != nil {
 							b.Fatal("cannot remove worker", err)
 						}
 					}
@@ -488,7 +452,7 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 	go func() {
 		<-startRemoving
 		for i := 0; i < rand.Intn(total); i++ {
-			if err := p.StopOne(ctx); err != nil && !errors.Is(err, ErrMinReached) {
+			if err := p.Less(); err != nil && !errors.Is(err, ErrMinReached) {
 				t.Fatal("cannot remove worker", err)
 			}
 		}

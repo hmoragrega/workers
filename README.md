@@ -28,7 +28,7 @@ func main() {
     pool := workers.Must(workers.New(job))
 
     if err := pool.Start(); err != nil {
-        log.Fatal("cannot start workers pool", err)
+        log.Fatal("cannot start pool", err)
     }
 
     // program continues...
@@ -38,7 +38,7 @@ func main() {
     defer cancel()
 
     if err := pool.Close(ctx); err != nil {
-        log.Fatal("cannot close workers pool", err)
+        log.Fatal("cannot close pool", err)
     }
 }
 ```
@@ -77,6 +77,40 @@ pool, err := workers.NewWithConfig(job, workers.Config{
 })
 ```
 
+#### Starting the pool
+The pool won't process any job until it is started
+```go
+if err := pool.Start(); err != nil {
+    log.Println("cannot start the pool", err)
+}
+```
+The operation will fail if:
+- the pool is not configured; `New` was not called
+- the pool is closed; `Close` was called
+- the pool is already running; `Start` was already called
+
+#### Stopping the pool
+Stopping the pool will request all the workers stop and 
+wait until all of them finish its ongoing jobs or the 
+given context is cancelled.
+
+```go
+if err := pool.Close(ctx); err != nil {
+    log.Println("cannot start the pool", err)
+}
+```
+ 
+`Close` will also wait for workers that were removed but
+are still executing its last job 
+
+The operation will fail if:
+- the pool is not configured; `New` was not called
+- the pool is already closed; `Close` was already called
+- the pool is not running; `Start` was not called.
+
+Alternative `CloseWithTimeout` can be used passing a
+ `time.Duration` as a helper.
+
 #### Adding workers
 To add a new worker to the pool you can call
 ```go
@@ -91,32 +125,19 @@ The operation will fail if:
 - the pool is not running; `Start` was not called
 
 #### Removing workers
-There are two ways of removing workers
-
-1 - `StopOne` will remove one worker from the pool and **wait**
-until:
-   - worker finishes its ongoing job.
-   - the context times out
-
-```go
-if err := pool.StopOne(ctx); err != nil {
-    log.Println("cannot stop more workers", err)
-}
-```
-
-Please note that even if the context times out, and the method 
-returns the context error, the worker will still stop eventually,
-as soon as it completes the job.
-
-2 - `Less` will remove one worker from the pool **without waiting**
-for the worker to stop. The worker will stop once it's completes 
-its ongoing job. 
-
+To remove a worker you can use `Less`. 
 ```go
 if err := pool.Less(); err != nil {
     log.Println("cannot remove more workers", err)
 }
 ```
+Less will remove a worker from the poo, immediately reduce
+the number of worker running, and request the worker to 
+stop processing jobs, but it won't wait until the worker 
+finally stops.
+
+These stopping workers will still be taken into account
+when the closing the pool, waiting for them to finish.
 
 The operation will fail if:
 - the minimum number of workers has been reached

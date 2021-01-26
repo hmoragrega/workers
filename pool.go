@@ -186,31 +186,13 @@ func (p *Pool) More() error {
 	return nil
 }
 
-// Less signals the pool to reduce a worker and
-// returns immediately without waiting for the
-// worker to stop, which will eventually happen.
+// Less removes the number of workers in the pool.
+//
+// This call does not wait for the worker to finish
+// its current job, if the pool is closed though,
+// the call to close it will wait for all removed
+// workers to finish before returning.
 func (p *Pool) Less() error {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	err := p.StopOne(ctx)
-	if errors.Is(err, context.Canceled) {
-		return nil
-	}
-
-	return err
-}
-
-// StopOne stops one worker and removes it from the pool.
-//
-// If the number of workers is already the minimum the call
-// will return "ErrMinReached" error.
-//
-// The current number of workers will decrement even if the
-// given context is cancelled or times out. The worker may still
-// be executing the job but it has a pending signal to terminate
-// and will eventually stop.
-func (p *Pool) StopOne(ctx context.Context) error {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -225,22 +207,22 @@ func (p *Pool) StopOne(ctx context.Context) error {
 		return ErrMinReached
 	}
 
-	// pop the last worker. We can remove it since
-	// we're going to call stop on the worker, and
-	// whether stops before the context is cancelled
-	// or not, is irrelevant, the "quit" will be
-	// sent and sooner or later the worker will stop.
+	// pop the last worker
 	w := p.workers[current-1]
 	p.workers = p.workers[:current-1]
 
-	return w.stop(ctx)
+	// stop the worker
+	w.cancel()
+
+	return nil
 }
 
 // Current returns the current number of workers.
 //
-// There may be more workers executing job while they are
-// pending to complete it's last job. See Less for
-// an explanation why.
+// There may be more workers executing jobs while
+// they are to complete it's last job after being
+// removed, but they will eventually finish and
+// stop processing new jobs.
 func (p *Pool) Current() int {
 	p.mx.RLock()
 	defer p.mx.RUnlock()
@@ -282,9 +264,8 @@ func (p *Pool) Close(ctx context.Context) error {
 	}
 }
 
-// CloseWIthTimeout displays the same behaviour as close, but
-// instead of passing a context for cancellation we can pass
-// a timeout value.
+// CloseWIthTimeout closes the pool waiting
+// for a certain amount of time.
 func (p *Pool) CloseWIthTimeout(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
