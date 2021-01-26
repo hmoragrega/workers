@@ -1,3 +1,3 @@
 module github.com/hmoragrega/workers
 
-go 1.15
+go 1.14
