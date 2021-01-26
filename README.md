@@ -1,5 +1,7 @@
 # workers
 
+[![CI][ci-badge]][ci-url]
+
 Go package that allows to run a pool of workers to run job concurrently in the background.
 
 ## Usage
@@ -183,3 +185,6 @@ pool := workers.Must(workers.New(
     wrapper.WithError(job, jobLogger("foo")
 ))
 ```
+
+[ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg
+[ci-url]:   https://github.com/hmoragrega/workers/actions?query=workflow%3ACI

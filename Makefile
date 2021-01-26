@@ -1,3 +1,4 @@
+SHELL := /bin/bash
 
 COVERAGE_FILE = coverage.out
 
