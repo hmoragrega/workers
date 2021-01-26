@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -236,15 +234,17 @@ func (p *Pool) Close(ctx context.Context) error {
 	// cannot change.
 	p.closed = true
 
-	var g errgroup.Group
+	var wg sync.WaitGroup
 	for _, w := range p.workers {
-		w := w
-		g.Go(func() error {
-			return w.stop(ctx)
-		})
+		wg.Add(1)
+		go func(w *worker) {
+			_ = w.stop(ctx)
+			wg.Done()
+		}(w)
 	}
+	wg.Wait()
 
-	return g.Wait()
+	return ctx.Err()
 }
 
 // CloseWIthTimeout displays the same behaviour as close, but
