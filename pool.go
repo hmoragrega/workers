@@ -36,6 +36,8 @@ type Job = func(ctx context.Context)
 // be used to extend the functionality of the pool.
 type JobMiddleware = func(job Job) Job
 
+// Config allows to configure the number of workers
+// that will be running in the pool.
 type Config struct {
 	// Min indicates the minimum number of workers that can run concurrently.
 	// When 0 is given the minimum is defaulted to 1.
@@ -50,10 +52,16 @@ type Config struct {
 	Initial int
 }
 
+// New creates a new pool with the default configuration.
+//
+// It accepts an arbitrary number of job middlewares to run.
 func New(job Job, middlewares ...JobMiddleware) (*Pool, error) {
 	return NewWithConfig(job, Config{}, middlewares...)
 }
 
+// NewWithConfig creates a new pool with an specific configuration.
+//
+// It accepts an arbitrary number of job middlewares to run.
 func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, error) {
 	if cfg.Min == 0 {
 		cfg.Min = 1
@@ -84,6 +92,8 @@ func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, er
 	return p, nil
 }
 
+// Must checks if the result of creating a pool
+// has failed and if so, panics.
 func Must(p *Pool, err error) *Pool {
 	if err != nil {
 		panic(err)
@@ -91,6 +101,8 @@ func Must(p *Pool, err error) *Pool {
 	return p
 }
 
+// Pool is a pool of workers that can be started
+// to run a job non-stop concurrently.
 type Pool struct {
 	job     Job
 	cfg     *Config
