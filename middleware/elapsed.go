@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/hmoragrega/workers"
 )
 
 // Elapsed is a job middleware that extends the simple counter
@@ -20,7 +22,7 @@ type Elapsed struct {
 }
 
 // Wrap wraps the inner job to obtain job timing metrics.
-func (e *Elapsed) Wrap(next func(context.Context)) func(context.Context) {
+func (e *Elapsed) Wrap(next workers.Job) workers.Job {
 	e.mx.Lock()
 	if e.since == nil {
 		e.since = time.Since
@@ -29,9 +31,9 @@ func (e *Elapsed) Wrap(next func(context.Context)) func(context.Context) {
 
 	// wrap incoming job with the counter.
 	next = e.Counter.Wrap(next)
-	return func(ctx context.Context) {
+	return workers.JobFunc(func(ctx context.Context) {
 		start := time.Now()
-		next(ctx)
+		next.Do(ctx)
 		elapsed := e.since(start)
 		count := e.Counter.Finished()
 
@@ -40,7 +42,7 @@ func (e *Elapsed) Wrap(next func(context.Context)) func(context.Context) {
 		e.total += e.last
 		e.average = e.total / time.Duration(count)
 		e.mx.Unlock()
-	}
+	})
 }
 
 // Total returns the total time spent executing

@@ -14,14 +14,14 @@ func TestCounterMiddleware(t *testing.T) {
 		stop           = make(chan struct{})
 	)
 
-	job := func(ctx context.Context) {
+	job := workers.JobFunc(func(ctx context.Context) {
 		if counter.Started() == stopAt {
 			// trigger the stop of the pool an wait for
 			// pool context cancellation to prevent new jobs
 			close(stop)
 			<-ctx.Done()
 		}
-	}
+	})
 
 	p := workers.Must(workers.New(job, &counter))
 	if err := p.Start(); err != nil {

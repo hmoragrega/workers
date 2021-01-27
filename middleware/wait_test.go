@@ -29,12 +29,12 @@ func TestWaitMiddleware_Wait(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stop := make(chan time.Time)
-			job := func(ctx context.Context) {
+			job := workers.JobFunc(func(ctx context.Context) {
 				stop <- time.Now()
 				<-ctx.Done()
-			}
+			})
 
-			p := workers.Must(workers.New(job, workers.MiddlewareFunc(Wait(tc.wait))))
+			p := workers.Must(workers.New(job, Wait(tc.wait)))
 
 			poolStarted := time.Now()
 			if err := p.Start(); err != nil {
@@ -56,11 +56,11 @@ func TestWaitMiddleware_Wait(t *testing.T) {
 
 func TestWaitMiddleware_Cancelled(t *testing.T) {
 	executed := make(chan struct{})
-	job := func(ctx context.Context) {
+	job := workers.JobFunc(func(ctx context.Context) {
 		close(executed)
-	}
+	})
 
-	p := workers.Must(workers.New(job, workers.MiddlewareFunc(Wait(time.Second))))
+	p := workers.Must(workers.New(job, Wait(time.Second)))
 	if err := p.Start(); err != nil {
 		t.Fatal("cannot start pool", err)
 	}

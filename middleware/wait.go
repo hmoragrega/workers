@@ -3,12 +3,14 @@ package middleware
 import (
 	"context"
 	"time"
+
+	"github.com/hmoragrega/workers"
 )
 
 // Wait will add a pause between calls to the next job.
 // The pause affects only jobs between the same worker.
-func Wait(wait time.Duration) func(func(context.Context)) func(context.Context) {
-	return func(job func(context.Context)) func(context.Context) {
+func Wait(wait time.Duration) workers.MiddlewareFunc {
+	return func(job workers.Job) workers.Job {
 		var (
 			ticker *time.Ticker
 			tick   <-chan time.Time
@@ -21,7 +23,7 @@ func Wait(wait time.Duration) func(func(context.Context)) func(context.Context) 
 			close(ch)
 			tick = ch
 		}
-		return func(ctx context.Context) {
+		return workers.JobFunc(func(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				if ticker != nil {
@@ -29,8 +31,8 @@ func Wait(wait time.Duration) func(func(context.Context)) func(context.Context) 
 				}
 				return
 			case <-tick:
-				job(ctx)
+				job.Do(ctx)
 			}
-		}
+		})
 	}
 }

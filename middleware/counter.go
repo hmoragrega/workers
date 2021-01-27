@@ -3,6 +3,8 @@ package middleware
 import (
 	"context"
 	"sync/atomic"
+
+	"github.com/hmoragrega/workers"
 )
 
 // Counter count how many jobs have started and finished.
@@ -12,12 +14,12 @@ type Counter struct {
 }
 
 // Wrap wraps the job adding counters.
-func (c *Counter) Wrap(next func(context.Context)) func(context.Context) {
-	return func(ctx context.Context) {
+func (c *Counter) Wrap(next workers.Job) workers.Job {
+	return workers.JobFunc(func(ctx context.Context) {
 		atomic.AddUint64(&c.started, 1)
-		next(ctx)
+		next.Do(ctx)
 		atomic.AddUint64(&c.finished, 1)
-	}
+	})
 }
 
 // Started returns the number of jobs that have been started.
