@@ -35,7 +35,7 @@ func TestWithErrorWrapper(t *testing.T) {
 				got = err
 			})
 
-			wrapped(context.Background())
+			wrapped.Do(context.Background())
 
 			if got != tc.want {
 				t.Fatalf("unexpected job result; got %d, want %d", got, tc.want)

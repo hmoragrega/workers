@@ -43,7 +43,7 @@ func TestWithRetryWrapper(t *testing.T) {
 			}
 
 			wrapped := WithRetry(job, tc.retries)
-			wrapped(context.Background())
+			wrapped.Do(context.Background())
 
 			if got := atomic.LoadUint32(&count); got != tc.want {
 				t.Fatalf("unexpected number of job executions; got %d, want %d", got, tc.want)

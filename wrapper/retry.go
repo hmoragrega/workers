@@ -3,6 +3,8 @@ package wrapper
 import (
 	"context"
 	"errors"
+
+	"github.com/hmoragrega/workers"
 )
 
 var ErrNotRetryable = errors.New("not retryable")
@@ -12,9 +14,9 @@ var ErrNotRetryable = errors.New("not retryable")
 //
 // If you consider than the error is not retryable you
 // can either return nil or the custom "ErrNotRetryable".
-func WithRetry(job func(context.Context) error, retries uint) func(context.Context) {
+func WithRetry(job func(context.Context) error, retries uint) workers.Job {
 	attemptsRemaining := retries + 1
-	return func(ctx context.Context) {
+	return workers.JobFunc(func(ctx context.Context) {
 		for attemptsRemaining > 0 {
 			attemptsRemaining--
 
@@ -24,5 +26,5 @@ func WithRetry(job func(context.Context) error, retries uint) func(context.Conte
 			}
 			return
 		}
-	}
+	})
 }

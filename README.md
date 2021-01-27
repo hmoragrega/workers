@@ -209,23 +209,23 @@ As an exercise let's log the job result with our favourite logging library using
 ```go
 // jobLogger is a reusable logger wrapper for jobs.
 jobLogger := func(jobName string) func(error) {
-    return func(error) {
-        if err != nil {
-            logger.Error("job failed", "job", jobName, "error", err)
-            return    
-        }
-        logger.Debug("job success", "job", jobName)
-    }
+	return func(err error) {
+		if err != nil {
+			logger.Error("job failed", "job", jobName, "error", err)
+			return
+		}
+		logger.Debug("job success", "job", jobName)
+	}
 }
 
-job := function(ctx context.Context) error {
-    err := someWorkThatCanFail()
-    return err
+job := func(ctx context.Context) error {
+	err := someWorkThatCanFail()
+	return err
 }
 
 pool := workers.Must(workers.New(
-    wrapper.WithError(job, jobLogger("foo")
-))
+	wrapper.WithError(job, jobLogger("foo"),
+)))
 ```
 
 [ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg
