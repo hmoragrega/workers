@@ -31,9 +31,20 @@ var (
 // the pool or stopping the pool completely.
 type Job = func(ctx context.Context)
 
-// JobMiddleware is a function that wraps the job and can
+// Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
-type JobMiddleware = func(job Job) Job
+type Middleware interface {
+	Wrap(job Job) Job
+}
+
+// MiddlewareFunc is a function that implements the
+// job middleware interface.
+type MiddlewareFunc func(job Job) Job
+
+// Wrap executes the middleware function wrapping the job.
+func (f MiddlewareFunc) Wrap(job Job) Job {
+	return f(job)
+}
 
 // Config allows to configure the number of workers
 // that will be running in the pool.
@@ -54,14 +65,14 @@ type Config struct {
 // New creates a new pool with the default configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func New(job Job, middlewares ...JobMiddleware) (*Pool, error) {
+func New(job Job, middlewares ...Middleware) (*Pool, error) {
 	return NewWithConfig(job, Config{}, middlewares...)
 }
 
 // NewWithConfig creates a new pool with an specific configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, error) {
+func NewWithConfig(job Job, cfg Config, middlewares ...Middleware) (*Pool, error) {
 	if cfg.Min == 0 {
 		cfg.Min = 1
 	}
@@ -80,7 +91,7 @@ func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, er
 	}
 
 	for _, mw := range middlewares {
-		job = mw(job)
+		job = mw.Wrap(job)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -163,10 +163,20 @@ type Job = func(ctx context.Context)
 There are two ways of extending the job functionality
 
 #### Job Middleware 
+A middleware allows to extend the job capabilities
 ```go
-// JobMiddleware is a function that wraps the job and can
+// Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
-type JobMiddleware = func(job Job) Job
+type Middleware interface {
+	Next(job Job) Job
+}
+```
+The helper `MiddlewareFunc` can be used to wrap
+simple middleware functions
+```go 
+// MiddlewareFunc is a function that implements the
+// job middleware interface.
+type MiddlewareFunc func(job Job) Job
 ```
 
 Some example of middleware:
