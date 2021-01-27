@@ -11,8 +11,8 @@ type Counter struct {
 	finished uint64
 }
 
-// Next wraps the job adding counters.
-func (c *Counter) Next(next func(context.Context)) func(context.Context) {
+// Wrap wraps the job adding counters.
+func (c *Counter) Wrap(next func(context.Context)) func(context.Context) {
 	return func(ctx context.Context) {
 		atomic.AddUint64(&c.started, 1)
 		next(ctx)

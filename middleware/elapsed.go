@@ -19,8 +19,8 @@ type Elapsed struct {
 	since func(time.Time) time.Duration
 }
 
-// Next wraps the inner job to obtain job timing metrics.
-func (e *Elapsed) Next(next func(context.Context)) func(context.Context) {
+// Wrap wraps the inner job to obtain job timing metrics.
+func (e *Elapsed) Wrap(next func(context.Context)) func(context.Context) {
 	e.mx.Lock()
 	if e.since == nil {
 		e.since = time.Since
@@ -28,7 +28,7 @@ func (e *Elapsed) Next(next func(context.Context)) func(context.Context) {
 	e.mx.Unlock()
 
 	// wrap incoming job with the counter.
-	next = e.Counter.Next(next)
+	next = e.Counter.Wrap(next)
 	return func(ctx context.Context) {
 		start := time.Now()
 		next(ctx)
