@@ -21,13 +21,13 @@ var (
 	ErrMaxReached     = errors.New("maximum number of workers reached")
 )
 
-// Job represent some work that needs to be done non-stop.
+// Job represents some work that needs to be done non-stop.
 type Job interface {
 	// Do executes the job.
 	//
-	// The only parameter that will receive is a context, the job
-	// should try to honor the context cancellation signal as soon
-	// as possible.
+	// The only parameter that will receive is the worker context,
+	// the job should try to honor the context cancellation signal
+	// as soon as possible.
 	//
 	// The context will be cancelled when removing workers from
 	// the pool or stopping the pool completely.

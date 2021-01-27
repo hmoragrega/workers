@@ -162,6 +162,7 @@ type Job interface {
 	Do(ctx context.Context)
 }
 ```
+
 Simple jobs can use the helper `JobFunc` to comply with the interface   
 ```go
 // JobFunc is a helper function that is a job.
@@ -179,6 +180,7 @@ type Middleware interface {
 	Next(job Job) Job
 }
 ```
+
 The helper `MiddlewareFunc` can be used to wrap
 simple middleware functions
 ```go 
