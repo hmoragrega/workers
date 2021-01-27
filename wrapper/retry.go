@@ -12,7 +12,7 @@ var ErrNotRetryable = errors.New("not retryable")
 // WithRetry is a job wrapper that allows to retry a job
 // if it returns an error.
 //
-// If you consider than the error is not retryable you
+// If you consider that the error is not retryable you
 // can either return nil or the custom "ErrNotRetryable".
 func WithRetry(job func(context.Context) error, retries uint) workers.Job {
 	attemptsRemaining := retries + 1
