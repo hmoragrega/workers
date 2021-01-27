@@ -297,9 +297,7 @@ func (p *Pool) newWorker() *worker {
 }
 
 type worker struct {
-	job      func()
-	interval time.Duration
-	cancel   func()
+	cancel func()
 }
 
 func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
