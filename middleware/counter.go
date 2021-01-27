@@ -11,8 +11,7 @@ type Counter struct {
 	finished uint64
 }
 
-// Middleware returns the job middleware that can be used
-// when creating a new pool.
+// Next wraps the job adding counters.
 func (c *Counter) Next(next func(context.Context)) func(context.Context) {
 	return func(ctx context.Context) {
 		atomic.AddUint64(&c.started, 1)
