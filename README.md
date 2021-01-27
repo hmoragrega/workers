@@ -171,7 +171,7 @@ type Middleware interface {
 	Next(job Job) Job
 }
 ```
-The helper `JobMiddlewareFunc` can be used to wrap
+The helper `MiddlewareFunc` can be used to wrap
 simple middleware functions
 ```go 
 // MiddlewareFunc is a function that implements the
