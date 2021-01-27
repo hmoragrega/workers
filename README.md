@@ -207,8 +207,8 @@ a certain amount of times.
 As an exercise let's log the job result with our favourite logging library using the 
 ["WithError" wrapper](wrapper/with_error.go);
 ```go
-// jobLogger is a reusable logger wrapper for jobs.
-jobLogger := func(jobName string) func(error) {
+// resultLogger is a reusable logger wrapper for jobs.
+resultLogger := func(jobName string) func(error) {
 	return func(err error) {
 		if err != nil {
 			logger.Error("job failed", "job", jobName, "error", err)
@@ -224,7 +224,7 @@ job := func(ctx context.Context) error {
 }
 
 pool := workers.Must(workers.New(
-	wrapper.WithError(job, jobLogger("foo"),
+	wrapper.WithError(job, resultLogger("foo"),
 )))
 ```
 
