@@ -9,7 +9,7 @@ import (
 
 // Wait will add a pause between calls to the next job.
 // The pause affects only jobs between the same worker.
-func Wait(wait time.Duration) func(workers.Job) workers.Job {
+func Wait(wait time.Duration) workers.MiddlewareFunc {
 	return func(job workers.Job) workers.Job {
 		var (
 			ticker *time.Ticker
