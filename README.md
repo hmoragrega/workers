@@ -205,7 +205,8 @@ may fail and return an error. We could, for example, [retry the job](wrapper/ret
 a certain amount of times.  
 
 As an exercise let's log the job result with our favourite logging library using the 
-["WithError" wrapper](wrapper/with_error.go);
+["WithError" wrapper](wrapper/with_error.go that registers a callback to handle the
+result of the jobs.
 ```go
 // resultLogger is a reusable logger wrapper for jobs.
 resultLogger := func(jobName string) func(error) {
