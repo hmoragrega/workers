@@ -4,7 +4,7 @@
 [![coverage][coverage-badge]][coverage-url]
 [![godoc][godoc-badge]][godoc-url]
 
-Go package that allows to run a pool of workers to run job concurrently in the background.
+Go package that allows to run a pool of workers to run a job concurrently in the background.
 
 ## Usage
 
