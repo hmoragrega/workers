@@ -18,7 +18,7 @@ func TestElapsedMiddleware(t *testing.T) {
 		last           = 10 * time.Second
 	)
 
-	job := func(ctx context.Context) {
+	job := workers.JobFunc(func(ctx context.Context) {
 		// make every job execution 1 second longer than the previous one.
 		elapsed.since = func(time.Time) time.Duration {
 			return time.Second * time.Duration(elapsed.Started())
@@ -27,7 +27,7 @@ func TestElapsedMiddleware(t *testing.T) {
 			close(stop)
 			<-ctx.Done()
 		}
-	}
+	})
 
 	p := workers.Must(workers.New(job, &elapsed))
 	if err := p.Start(); err != nil {

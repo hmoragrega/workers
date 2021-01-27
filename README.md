@@ -17,13 +17,14 @@ import (
     "log"
     "context"
     "time"
+
     "github.com/hmoragrega/workers"
 )
 
 func main() {
-    job := func(ctx context.Context) {
+    job := workers.JobFunc(func(ctx context.Context) {
         // my job code 
-    }
+    })
 
     pool := workers.Must(workers.New(job))
 
@@ -31,15 +32,14 @@ func main() {
         log.Fatal("cannot start pool", err)
     }
 
-    // program continues...
+    defer func() {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
 
-    // program shutdown
-    ctx, cancel := context.WithTimeout(context.Background(), 5 * time.Second)
-    defer cancel()
-
-    if err := pool.Close(ctx); err != nil {
-        log.Fatal("cannot close pool", err)
-    }
+        if err := pool.Close(ctx); err != nil {
+            log.Fatal("cannot close pool", err)
+        }    
+    }()
 }
 ```
 
@@ -149,15 +149,23 @@ The operation will fail if:
 A job is a simple function that accepts only one parameter, the worker context.
 
 ```go
-// Job is a function that does work.
-//
-// The only parameter that will receive is a context, the job
-// should try to honor the context cancellation signal as soon
-// as possible.
-//
-// The context will be cancelled when removing workers from
-// the pool or stopping the pool completely.
-type Job = func(ctx context.Context)
+// Job represent some work that needs to be done non-stop.
+type Job interface {
+	// Do executes the job.
+	//
+	// The only parameter that will receive is a context, the job
+	// should try to honor the context cancellation signal as soon
+	// as possible.
+	//
+	// The context will be cancelled when removing workers from
+	// the pool or stopping the pool completely.
+	Do(ctx context.Context)
+}
+```
+Simple jobs can use the helper `JobFunc` to comply with the interface   
+```go
+// JobFunc is a helper function that is a job.
+type JobFunc func(ctx context.Context)
 ```
 
 There are two ways of extending the job functionality

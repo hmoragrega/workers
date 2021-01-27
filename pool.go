@@ -21,15 +21,26 @@ var (
 	ErrMaxReached     = errors.New("maximum number of workers reached")
 )
 
-// Job is a function that does work.
-//
-// The only parameter that will receive is a context, the job
-// should try to honor the context cancellation signal as soon
-// as possible.
-//
-// The context will be cancelled when removing workers from
-// the pool or stopping the pool completely.
-type Job = func(ctx context.Context)
+// Job represent some work that needs to be done non-stop.
+type Job interface {
+	// Do executes the job.
+	//
+	// The only parameter that will receive is a context, the job
+	// should try to honor the context cancellation signal as soon
+	// as possible.
+	//
+	// The context will be cancelled when removing workers from
+	// the pool or stopping the pool completely.
+	Do(ctx context.Context)
+}
+
+// JobFunc is a helper function that is a job.
+type JobFunc func(ctx context.Context)
+
+// Do executes the job work.
+func (f JobFunc) Do(ctx context.Context) {
+	f(ctx)
+}
 
 // Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
@@ -309,7 +320,7 @@ func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
 		case <-ctx.Done():
 			return
 		default:
-			job(ctx)
+			job.Do(ctx)
 		}
 	}
 }

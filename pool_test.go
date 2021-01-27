@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	dummyJob = func(_ context.Context) {}
-	slowJob  = func(_ context.Context) {
+	dummyJob = JobFunc(func(_ context.Context) {})
+	slowJob  = JobFunc(func(_ context.Context) {
 		<-time.NewTimer(150 * time.Millisecond).C
-	}
+	})
 )
 
 func TestPool_New(t *testing.T) {
@@ -321,12 +321,12 @@ func TestPool_Close(t *testing.T) {
 
 	t.Run("close timeout error", func(t *testing.T) {
 		running := make(chan struct{})
-		p := Must(New(func(_ context.Context) {
+		p := Must(New(JobFunc(func(_ context.Context) {
 			// signal that we are running the job
 			running <- struct{}{}
 			// block the job so the call to close times out
 			running <- struct{}{}
-		}))
+		})))
 		if err := p.Start(); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
@@ -345,10 +345,10 @@ func TestPool_Close(t *testing.T) {
 	})
 
 	t.Run("close cancelled error", func(t *testing.T) {
-		p := Must(New(func(_ context.Context) {
+		p := Must(New(JobFunc(func(_ context.Context) {
 			block := make(chan struct{})
 			<-block
-		}))
+		})))
 		if err := p.Start(); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
@@ -423,7 +423,7 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 		startRemoving = make(chan struct{})
 	)
 
-	p := Must(New(func(ctx context.Context) {
+	p := Must(New(JobFunc(func(ctx context.Context) {
 		if atomic.AddUint32(&count, 1) == uint32(headStart) {
 			close(startRemoving)
 		}
@@ -431,7 +431,7 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 		case <-ctx.Done():
 		case <-time.NewTimer(100 * time.Millisecond).C:
 		}
-	}))
+	})))
 
 	if err := p.Start(); err != nil {
 		t.Fatal("cannot start pool", err)
