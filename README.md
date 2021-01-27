@@ -232,8 +232,8 @@ pool := workers.Must(workers.New(
 [ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg
 [ci-url]:   https://github.com/hmoragrega/workers/actions?query=workflow%3ACI
 
-[coverage-badge]: https://coveralls.io/repos/github/hmoragrega/workers/badge.svg
-[coverage-url]:   https://coveralls.io/github/hmoragrega/workers
+[coverage-badge]: https://coveralls.io/repos/github/hmoragrega/workers/badge.svg?branch=main
+[coverage-url]:   https://coveralls.io/github/hmoragrega/workers?branch=main
 
 [godoc-badge]: https://pkg.go.dev/badge/github.com/hmoragrega/workers.svg
 [godoc-url]:   https://pkg.go.dev/github.com/hmoragrega/workers
