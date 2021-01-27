@@ -146,8 +146,7 @@ The operation will fail if:
 - the pool is not running; `Start` was not called
 
 ### Job
-A job is a simple function that accepts only one parameter, the worker context.
-
+A job represents a task that needs to be performed constantly.
 ```go
 // Job represent some work that needs to be done non-stop.
 type Job interface {
