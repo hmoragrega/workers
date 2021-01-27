@@ -31,9 +31,9 @@ var (
 // the pool or stopping the pool completely.
 type Job = func(ctx context.Context)
 
-// JobMiddleware is a function that wraps the job and can
+// Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
-type JobMiddleware interface {
+type Middleware interface {
 	Wrap(job Job) Job
 }
 
@@ -65,14 +65,14 @@ type Config struct {
 // New creates a new pool with the default configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func New(job Job, middlewares ...JobMiddleware) (*Pool, error) {
+func New(job Job, middlewares ...Middleware) (*Pool, error) {
 	return NewWithConfig(job, Config{}, middlewares...)
 }
 
 // NewWithConfig creates a new pool with an specific configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func NewWithConfig(job Job, cfg Config, middlewares ...JobMiddleware) (*Pool, error) {
+func NewWithConfig(job Job, cfg Config, middlewares ...Middleware) (*Pool, error) {
 	if cfg.Min == 0 {
 		cfg.Min = 1
 	}
