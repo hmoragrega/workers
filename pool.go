@@ -287,7 +287,6 @@ func (p *Pool) CloseWIthTimeout(timeout time.Duration) error {
 func (p *Pool) newWorker() *worker {
 	ctx, cancel := context.WithCancel(p.ctx)
 	w := &worker{
-		done:   make(chan struct{}),
 		cancel: cancel,
 	}
 
@@ -301,12 +300,10 @@ type worker struct {
 	job      func()
 	interval time.Duration
 	cancel   func()
-	done     chan struct{}
 }
 
 func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
 	defer func() {
-		close(w.done)
 		stopped <- struct{}{}
 	}()
 	for {
@@ -316,16 +313,5 @@ func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
 		default:
 			job(ctx)
 		}
-	}
-}
-
-func (w *worker) stop(ctx context.Context) error {
-	w.cancel()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-w.done:
-		return nil
 	}
 }
