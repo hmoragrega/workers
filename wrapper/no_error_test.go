@@ -2,14 +2,20 @@ package wrapper
 
 import (
 	"context"
-
-	"github.com/hmoragrega/workers"
+	"testing"
 )
 
-// NoError wraps a job returning always nil
-func NoError(job func(ctx context.Context)) workers.Job {
-	return workers.JobFunc(func(ctx context.Context) error {
-		job(ctx)
-		return nil
-	})
+func TestNoError(t *testing.T) {
+	var called bool
+	job := func(ctx context.Context) {
+		called = true
+	}
+
+	got := NoError(job).Do(context.Background())
+	if got != nil {
+		t.Fatal("unexpected job error", got)
+	}
+	if !called {
+		t.Fatal("wrapped job was not called", got)
+	}
 }

@@ -31,9 +31,9 @@ func (e *Elapsed) Wrap(next workers.Job) workers.Job {
 
 	// wrap incoming job with the counter.
 	next = e.Counter.Wrap(next)
-	return workers.JobFunc(func(ctx context.Context) {
+	return workers.JobFunc(func(ctx context.Context) error {
 		start := time.Now()
-		next.Do(ctx)
+		err := next.Do(ctx)
 		elapsed := e.since(start)
 		count := e.Counter.Finished()
 
@@ -42,6 +42,8 @@ func (e *Elapsed) Wrap(next workers.Job) workers.Job {
 		e.total += e.last
 		e.average = e.total / time.Duration(count)
 		e.mx.Unlock()
+
+		return err
 	})
 }
 

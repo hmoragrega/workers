@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -52,16 +51,16 @@ type Job interface {
 	// as soon as possible.
 	//
 	// The context will be cancelled when removing workers from
-	// the pool or stopping the pool completely.
-	Do(ctx context.Context)
+	// the pool or stopping the pool completely
+	Do(ctx context.Context) error
 }
 
 // JobFunc is a helper function that is a job.
-type JobFunc func(ctx context.Context)
+type JobFunc func(ctx context.Context) error
 
 // Do executes the job work.
-func (f JobFunc) Do(ctx context.Context) {
-	f(ctx)
+func (f JobFunc) Do(ctx context.Context) error {
+	return f(ctx)
 }
 
 // Middleware is a function that wraps the job and can
@@ -77,6 +76,14 @@ type MiddlewareFunc func(job Job) Job
 // Wrap executes the middleware function wrapping the job.
 func (f MiddlewareFunc) Wrap(job Job) Job {
 	return f(job)
+}
+
+// Wrap is a helper to apply a chain of middleware to a job.
+func Wrap(job Job, middlewares ...Middleware) Job {
+	for _, mw := range middlewares {
+		job = mw.Wrap(job)
+	}
+	return job
 }
 
 // Config allows to configure the number of workers
@@ -139,10 +146,12 @@ func Must(p *Pool, err error) *Pool {
 // Pool is a pool of workers that can be started
 // to run a job non-stop concurrently.
 type Pool struct {
+	// config
 	min     int
 	initial int
 	max     int
 
+	// job and its workers.
 	job     Job
 	mws     []Middleware
 	workers []*worker
@@ -156,12 +165,16 @@ type Pool struct {
 	ctx    context.Context
 	cancel func()
 
-	// Holds the number of running workers
-	// When a worker stops it will send a
-	// signal the channel.
-	running uint64
-	stopped chan struct{}
-	done    chan struct{}
+	// workers will let the pool know
+	// when they start and when they stop
+	// through this channel (+1, -1)
+	running chan int
+
+	// Once the pool is closed and all the
+	// workers stopped this channel
+	// will be closed to signal the pool
+	// has finished in a clean way.
+	done chan struct{}
 
 	mx sync.RWMutex
 }
@@ -177,34 +190,61 @@ func (p *Pool) Start(job Job) error {
 	if p.started {
 		return ErrPoolStarted
 	}
-	for _, mw := range p.mws {
-		job = mw.Wrap(job)
-	}
-
-	p.job = job
-	p.started = true
-	p.ctx, p.cancel = context.WithCancel(context.Background())
-	p.stopped = make(chan struct{})
-	p.done = make(chan struct{})
-
 	initial := p.initial
 	if initial == 0 {
 		initial = 1
 	}
+
+	p.started = true
+	p.job = Wrap(job, p.mws...)
+	p.running = make(chan int)
+	p.done = make(chan struct{})
+	p.workers = make([]*worker, initial)
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+
+	go p.waitForWorkersToStop()
+
+	var wg sync.WaitGroup
+	wg.Add(initial)
 	for i := 0; i < initial; i++ {
-		p.workers = append(p.workers, p.newWorker())
+		go func(i int) {
+			p.workers[i] = p.newWorker()
+			wg.Done()
+		}(i)
 	}
 
-	go func() {
-		for range p.stopped {
-			if atomic.AddUint64(&p.running, ^uint64(0)) == 0 {
-				close(p.done)
-				close(p.stopped)
-			}
-		}
-	}()
-
+	wg.Wait()
 	return nil
+}
+
+func (p *Pool) waitForWorkersToStop() {
+	var running int
+	defer func() {
+		close(p.done)
+		close(p.running)
+	}()
+	for {
+		select {
+		case delta := <-p.running:
+			running += delta
+		case <-p.ctx.Done():
+			// we may receive the pool close cancellation after
+			// all workers have already stop, we need to
+			// fallthrough
+		}
+		if running > 0 {
+			continue
+		}
+		// we need to understand if we have no workers
+		// because the pool is closed, or because the
+		// all workers were removed (paused)
+		p.mx.RLock()
+		isClosed := p.closed
+		p.mx.RUnlock()
+		if isClosed {
+			return
+		}
+	}
 }
 
 // More starts a new worker in the pool.
@@ -240,6 +280,9 @@ func (p *Pool) Less() error {
 	if p.closed {
 		return ErrPoolClosed
 	}
+	if !p.started {
+		return ErrNotStarted
+	}
 	current := len(p.workers)
 	if current == p.min {
 		return ErrMinReached
@@ -273,25 +316,13 @@ func (p *Pool) Current() int {
 // Only the first call to Close will shutdown the pool,
 // the next calls will be ignored and return nil.
 func (p *Pool) Close(ctx context.Context) error {
-	p.mx.RLock()
-	defer p.mx.RUnlock()
-
-	if p.closed {
-		return ErrPoolClosed
+	if err := p.close(); err != nil {
+		return err
 	}
-
-	// close the pool to prevent
-	// new workers to be added.
-	p.closed = true
-
-	// early exit if the pool
-	// is not running.
-	if !p.started {
+	if !p.hasStarted() {
 		return nil
 	}
 
-	// cancel the pool context,
-	// all workers will stop.
 	p.cancel()
 
 	select {
@@ -300,6 +331,27 @@ func (p *Pool) Close(ctx context.Context) error {
 	case <-p.done:
 		return nil
 	}
+}
+
+// close attempts to close the pool.
+func (p *Pool) hasStarted() bool {
+	p.mx.RLock()
+	defer p.mx.RUnlock()
+
+	return p.started
+}
+
+// close attempts to close the pool.
+func (p *Pool) close() error {
+	p.mx.Lock()
+	defer p.mx.Unlock()
+
+	if p.closed {
+		return ErrPoolClosed
+	}
+	p.closed = true
+
+	return nil
 }
 
 // CloseWIthTimeout closes the pool waiting
@@ -317,8 +369,13 @@ func (p *Pool) newWorker() *worker {
 		cancel: cancel,
 	}
 
-	atomic.AddUint64(&p.running, 1)
-	go w.work(ctx, p.job, p.stopped)
+	p.running <- 1
+	go func() {
+		defer func() {
+			p.running <- -1
+		}()
+		w.work(ctx, p.job)
+	}()
 
 	return w
 }
@@ -327,16 +384,13 @@ type worker struct {
 	cancel func()
 }
 
-func (w *worker) work(ctx context.Context, job Job, stopped chan<- struct{}) {
-	defer func() {
-		stopped <- struct{}{}
-	}()
+func (w *worker) work(ctx context.Context, job Job) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			job.Do(ctx)
+			_ = job.Do(ctx)
 		}
 	}
 }

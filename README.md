@@ -23,8 +23,9 @@ import (
 func main() {
     var pool Pool
 
-    job := workers.JobFunc(func(ctx context.Context) {
+    job := workers.JobFunc(func(ctx context.Context) error {
         // my job code 
+        return nil
     })
 
     if err := pool.Start(job); err != nil {
@@ -141,9 +142,9 @@ The operation will fail if:
 - the pool is not running
 
 ### Job
-A job represents a task that needs to be performed constantly.
+A job represents a task that needs to be performed.
 ```go
-// Job represent some work that needs to be done non-stop.
+// Job represent some work that needs to be done.
 type Job interface {
 	// Do executes the job.
 	//
@@ -153,17 +154,17 @@ type Job interface {
 	//
 	// The context will be cancelled when removing workers from
 	// the pool or stopping the pool completely.
-	Do(ctx context.Context)
+	Do(ctx context.Context) error
 }
 ```
 
 Simple jobs can use the helper `JobFunc` to comply with the interface   
 ```go
 // JobFunc is a helper function that is a job.
-type JobFunc func(ctx context.Context)
+type JobFunc func(ctx context.Context) error
 ```
 
-There are two ways of extending the job functionality
+To extend the functionality of jobs you can use middlewares or wrappers.
 
 #### Job Middleware 
 A middleware allows to extend the job capabilities
@@ -171,7 +172,7 @@ A middleware allows to extend the job capabilities
 // Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
 type Middleware interface {
-	Next(job Job) Job
+	Wrap(job Job) Job
 }
 ```
 
@@ -189,39 +190,70 @@ Some example of middleware:
   - the total amount of time.
   - the average time.
   - the time of the last executed job.
+* [Retry](middleware/retry.go) it will retry failed jobs a certain amount of times. 
 * [Wait](middleware/wait.go) allows to add a pause between worker jobs. (Job will
 still be running concurrently if there are more workers) 
 
-#### Job Wrapper
-A job wrapper is a function that can transform and extend the job signature. 
-
-Some common scenario that can benefit of job wrappers are jobs that
-may fail and return an error. We could, for example, [retry the job](wrapper/retry.go) 
-a certain amount of times.  
-
-As an exercise let's log the job result with our favourite logging library using the 
-["WithError" wrapper](wrapper/with_error.go) that registers a callback to handle the
-result of the jobs.
+As an exercise let's log the job result with our favourite logging library.
 ```go
-// resultLogger is a reusable logger wrapper for jobs.
-resultLogger := func(jobName string) func(error) {
-	return func(err error) {
-		if err != nil {
-			logger.Error("job failed", "job", jobName, "error", err)
-			return
-		}
-		logger.Debug("job success", "job", jobName)
+// jobLogger is a middleware that logs the result of a job
+// with "debug" or "error" level depending on the result.
+jobLogger := func(name string) workers.MiddlewareFunc {
+	return func(job workers.Job) workers.Job {
+		return workers.JobFunc(func(ctx context.Context) error {
+			err := job.Do(ctx)
+
+			logger.Cond(err != nil, logger.Error, logger.Debug).
+				Log("job executed", "job", jobName, "error", err)
+
+			return err
+		})
 	}
 }
 
-job := wrapper.WithError(func(ctx context.Context) error {
-	err := someWorkThatCanFail()
-	return err
-}, resultLogger("my-job"))
-
-var pool Pool
-pool.Start(job)
+pool := workers.Must(workers.New(jobLogger("my-job")))
+pool.Start(workers.JobFunc(func(ctx context.Context) error {
+	return someWork()
+}))
 ```
+
+If you need to add a middleware before starting the job instead of on pool creating
+there's the little handy function `Wrap` that will easy applying them for you.
+
+```
+// Wrap is a helper to apply a chain of middleware to a job.
+func Wrap(job Job, middlewares ...Middleware) Job
+```
+
+```go
+var pool Pool
+
+job := workers.JobFunc(func(ctx context.Context) (err error) {
+  	// work
+    return err
+}
+
+pool.Start(workers.Wrap(job, jobLogger("my-job")))
+```
+
+#### Job Wrapper
+A job wrapper can be used to change the signature of a job.
+
+For example, your job may never return errors, yet still has to comply
+with the Job interface that requires it.
+
+You could use the [NoError wrapper](wrapper/no_error.go) to avoid
+having to return error from you job function.
+
+```go
+job := func(ctx context.Context) {
+    // work
+}
+
+var pool workers.Pool 
+pool.Start(workers.NoError(job))
+```
+
 
 [ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg
 [ci-url]:   https://github.com/hmoragrega/workers/actions?query=workflow%3ACI

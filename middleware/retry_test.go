@@ -1,10 +1,11 @@
-package wrapper
+package middleware
 
 import (
 	"context"
 	"errors"
-	"sync/atomic"
 	"testing"
+
+	"github.com/hmoragrega/workers"
 )
 
 func TestWithRetryWrapper(t *testing.T) {
@@ -13,40 +14,47 @@ func TestWithRetryWrapper(t *testing.T) {
 		name    string
 		retries uint
 		results []error
-		want    uint32
+		calls   int
+		want    error
 	}{
 		{
 			name:    "retries exhausted",
 			retries: 3,
 			results: []error{dummyErr, dummyErr, dummyErr, dummyErr},
-			want:    4,
+			calls:   4,
+			want:    dummyErr,
 		},
 		{
 			name:    "first try success",
 			retries: 3,
 			results: []error{nil},
-			want:    1,
+			calls:   1,
+			want:    nil,
 		},
 		{
 			name:    "non-retryable error",
 			retries: 3,
 			results: []error{dummyErr, ErrNotRetryable},
-			want:    2,
+			calls:   2,
+			want:    ErrNotRetryable,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var count uint32
-			job := func(ctx context.Context) error {
-				i := atomic.AddUint32(&count, 1)
-				return tc.results[i-1]
+			var count int
+			job := workers.JobFunc(func(ctx context.Context) error {
+				count++
+				return tc.results[count-1]
+			})
+
+			got := Retry(tc.retries).Wrap(job).Do(context.Background())
+
+			if !errors.Is(got, tc.want) {
+				t.Fatalf("unexpected job result; got %d, want %d", got, tc.want)
 			}
 
-			wrapped := WithRetry(job, tc.retries)
-			wrapped.Do(context.Background())
-
-			if got := atomic.LoadUint32(&count); got != tc.want {
-				t.Fatalf("unexpected number of job executions; got %d, want %d", got, tc.want)
+			if count != tc.calls {
+				t.Fatalf("unexpected number of job executions; got %d, want %d", count, tc.calls)
 			}
 		})
 	}

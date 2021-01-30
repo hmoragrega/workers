@@ -23,15 +23,15 @@ func Wait(wait time.Duration) workers.MiddlewareFunc {
 			close(ch)
 			tick = ch
 		}
-		return workers.JobFunc(func(ctx context.Context) {
+		return workers.JobFunc(func(ctx context.Context) error {
 			select {
 			case <-ctx.Done():
 				if ticker != nil {
 					ticker.Stop()
 				}
-				return
+				return ctx.Err()
 			case <-tick:
-				job.Do(ctx)
+				return job.Do(ctx)
 			}
 		})
 	}

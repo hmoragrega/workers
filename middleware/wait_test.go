@@ -29,9 +29,10 @@ func TestWaitMiddleware_Wait(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stop := make(chan time.Time)
-			job := workers.JobFunc(func(ctx context.Context) {
+			job := workers.JobFunc(func(ctx context.Context) error {
 				stop <- time.Now()
 				<-ctx.Done()
+				return nil
 			})
 
 			p := workers.Must(workers.New(Wait(tc.wait)))
@@ -56,8 +57,9 @@ func TestWaitMiddleware_Wait(t *testing.T) {
 
 func TestWaitMiddleware_Cancelled(t *testing.T) {
 	executed := make(chan struct{})
-	job := workers.JobFunc(func(ctx context.Context) {
+	job := workers.JobFunc(func(ctx context.Context) error {
 		close(executed)
+		return nil
 	})
 
 	p := workers.Must(workers.New(Wait(time.Second)))

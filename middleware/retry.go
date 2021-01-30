@@ -1,4 +1,4 @@
-package wrapper
+package middleware
 
 import (
 	"context"
@@ -11,22 +11,29 @@ import (
 // to avoid retrying it.
 var ErrNotRetryable = errors.New("not retryable")
 
-// WithRetry is a job wrapper that allows to retry a job
+// Retry is a job middleware that allows to retry a job
 // if it returns an error.
 //
 // If you consider that the error is not retryable you
 // can either return nil or the custom "ErrNotRetryable".
-func WithRetry(job func(context.Context) error, retries uint) workers.Job {
-	attemptsRemaining := retries + 1
-	return workers.JobFunc(func(ctx context.Context) {
-		for attemptsRemaining > 0 {
-			attemptsRemaining--
+func Retry(retries uint) workers.Middleware {
+	return workers.MiddlewareFunc(func(job workers.Job) workers.Job {
+		return workers.JobFunc(func(ctx context.Context) (err error) {
+			attempts := retries + 1
+			for attempts > 0 {
+				err = job.Do(ctx)
 
-			err := job(ctx)
-			if err != nil && !errors.Is(err, ErrNotRetryable) {
+				if err == nil {
+					return nil
+				}
+				if errors.Is(err, ErrNotRetryable) {
+					return err
+				}
+
+				attempts--
 				continue
 			}
-			return
-		}
+			return err
+		})
 	})
 }

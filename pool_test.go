@@ -12,9 +12,12 @@ import (
 )
 
 var (
-	dummyJob = JobFunc(func(_ context.Context) {})
-	slowJob  = JobFunc(func(_ context.Context) {
+	dummyJob = JobFunc(func(_ context.Context) error {
+		return nil
+	})
+	slowJob = JobFunc(func(_ context.Context) error {
 		<-time.NewTimer(150 * time.Millisecond).C
+		return nil
 	})
 )
 
@@ -237,7 +240,7 @@ func TestPool_Less(t *testing.T) {
 		}
 	})
 
-	t.Run("error returned if trying to go below the minimum number of workers", func(t *testing.T) {
+	t.Run("error minimum number of workers reached", func(t *testing.T) {
 		var p Pool
 		t.Cleanup(func() {
 			if err := p.CloseWIthTimeout(time.Second); err != nil {
@@ -273,6 +276,13 @@ func TestPool_Less(t *testing.T) {
 			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
 		}
 	})
+
+	t.Run("error pool not started", func(t *testing.T) {
+		var p Pool
+		if got, want := p.Less(), ErrNotStarted; got != want {
+			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
+		}
+	})
 }
 
 func TestPool_Close(t *testing.T) {
@@ -299,11 +309,12 @@ func TestPool_Close(t *testing.T) {
 	t.Run("close timeout error", func(t *testing.T) {
 		var p Pool
 		running := make(chan struct{})
-		job := JobFunc(func(_ context.Context) {
+		job := JobFunc(func(_ context.Context) error {
 			// signal that we are running the job
 			running <- struct{}{}
 			// block the job so the call to close times out
 			running <- struct{}{}
+			return nil
 		})
 		if err := p.Start(job); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
@@ -324,9 +335,10 @@ func TestPool_Close(t *testing.T) {
 
 	t.Run("close cancelled error", func(t *testing.T) {
 		var p Pool
-		job := JobFunc(func(_ context.Context) {
+		job := JobFunc(func(_ context.Context) error {
 			block := make(chan struct{})
 			<-block
+			return nil
 		})
 		if err := p.Start(job); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
@@ -340,6 +352,62 @@ func TestPool_Close(t *testing.T) {
 			t.Fatalf("unexpected error closing pool: %+v, want %+v", got, context.Canceled)
 		}
 	})
+}
+
+func TestPool_ConcurrencySafety(t *testing.T) {
+	rand.Seed(time.Now().UnixNano())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	var (
+		count         uint32
+		headStart     = 100
+		total         = 300 + headStart
+		startRemoving = make(chan struct{})
+	)
+
+	var p Pool
+	job := JobFunc(func(ctx context.Context) error {
+		if atomic.AddUint32(&count, 1) == uint32(headStart) {
+			close(startRemoving)
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.NewTimer(100 * time.Millisecond).C:
+		}
+		return nil
+	})
+
+	if err := p.Start(job); err != nil {
+		t.Fatal("cannot start pool", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		for i := 0; i < rand.Intn(total); i++ {
+			if err := p.More(); err != nil {
+				t.Fatal("cannot add worker", err)
+			}
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		<-startRemoving
+		for i := 0; i < rand.Intn(total); i++ {
+			if err := p.Less(); err != nil && !errors.Is(err, ErrMinReached) {
+				t.Fatal("cannot remove worker", err)
+			}
+		}
+		wg.Done()
+	}()
+
+	wg.Wait()
+	if err := p.Close(ctx); err != nil {
+		t.Fatal("cannot close pool", err)
+	}
 }
 
 func BenchmarkPool(b *testing.B) {
@@ -387,60 +455,5 @@ func BenchmarkPool(b *testing.B) {
 				}
 			}
 		})
-	}
-}
-
-func TestPool_ConcurrencySafety(t *testing.T) {
-	rand.Seed(time.Now().UnixNano())
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	var (
-		count         uint32
-		headStart     = 100
-		total         = 300 + headStart
-		startRemoving = make(chan struct{})
-	)
-
-	var p Pool
-	job := JobFunc(func(ctx context.Context) {
-		if atomic.AddUint32(&count, 1) == uint32(headStart) {
-			close(startRemoving)
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.NewTimer(100 * time.Millisecond).C:
-		}
-	})
-
-	if err := p.Start(job); err != nil {
-		t.Fatal("cannot start pool", err)
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		for i := 0; i < rand.Intn(total); i++ {
-			if err := p.More(); err != nil {
-				t.Fatal("cannot add worker", err)
-			}
-		}
-		wg.Done()
-	}()
-
-	go func() {
-		<-startRemoving
-		for i := 0; i < rand.Intn(total); i++ {
-			if err := p.Less(); err != nil && !errors.Is(err, ErrMinReached) {
-				t.Fatal("cannot remove worker", err)
-			}
-		}
-		wg.Done()
-	}()
-
-	wg.Wait()
-	if err := p.Close(ctx); err != nil {
-		t.Fatal("cannot close pool", err)
 	}
 }
