@@ -7,8 +7,7 @@
 Go package that allows to run a pool of workers to run a job concurrently in the background.
 
 ## Usage
-
-Create a pool of workers passing a job and start the pool.
+Create a pool and start running a job.
 
 ```go
 package main
@@ -22,13 +21,13 @@ import (
 )
 
 func main() {
+    var pool Pool
+
     job := workers.JobFunc(func(ctx context.Context) {
         // my job code 
     })
 
-    pool := workers.Must(workers.New(job))
-
-    if err := pool.Start(); err != nil {
+    if err := pool.Start(job); err != nil {
         log.Fatal("cannot start pool", err)
     }
 
@@ -47,7 +46,7 @@ func main() {
 A pool runs a single job trough a number of concurrent workers.
 
 By default, a pool will have one worker, and will allow to increase
-the number of workers indefinitely. 
+the number of workers indefinitely or even remove them all to pause the job.
 
 There are a few configuration parameters that can tweak the pool
 behaviour
@@ -55,7 +54,7 @@ behaviour
 ```go
 type Config struct {
     // Min indicates the minimum number of workers that can run concurrently.
-    // When 0 is given the minimum is defaulted to 1.
+    // By default the pool can have 0 workers, pausing it effectively.
     Min int
 
     // Max indicates the maximum number of workers that can run concurrently.
@@ -63,14 +62,14 @@ type Config struct {
     Max int
 
     // Initial indicates the initial number of workers that should be running.
-    // When 0 is given the minimum is used.
+    // The default value will be the greater number between 1 or the given minimum.
     Initial int
 }
 ```
 
 To have a pool with a tweaked config you can call `NewWithConfig`
 ```go
-pool, err := workers.NewWithConfig(job, workers.Config{
+pool, err := workers.NewWithConfig(workers.Config{
    Min:     3,
    Max:     10,
    Initial: 5,
@@ -78,20 +77,19 @@ pool, err := workers.NewWithConfig(job, workers.Config{
 ```
 
 #### Starting the pool
-The pool won't process any job until it is started
+To start the pool give it a job to run:
 ```go
-if err := pool.Start(); err != nil {
+if err := pool.Start(job); err != nil {
     log.Println("cannot start the pool", err)
 }
 ```
 The operation will fail if:
-- the pool is not configured; `New` was not called
-- the pool is closed; `Close` was called
-- the pool is already running; `Start` was already called
+- the pool is has already been closed.
+- the pool is already running.
 
 #### Stopping the pool
 Stopping the pool will request all the workers stop and 
-wait until all of them finish its ongoing jobs or the 
+wait until all of them finish its ongoing jobs, or the 
 given context is cancelled.
 
 ```go
@@ -104,9 +102,8 @@ if err := pool.Close(ctx); err != nil {
 are still executing its last job 
 
 The operation will fail if:
-- the pool is not configured; `New` was not called
-- the pool is already closed; `Close` was already called
-- the pool is not running; `Start` was not called.
+- the pool is has already been closed.
+- the pool is not running
 
 Alternative `CloseWithTimeout` can be used passing a
  `time.Duration` as a helper.
@@ -120,9 +117,8 @@ if err := pool.More(); err != nil {
 ```
 The operation will fail if:
 - the maximum number of workers has been reached
-- the pool is not configured; `New` was not called
-- the pool is closed; `Close` was called
-- the pool is not running; `Start` was not called
+- the pool has already been closed
+- the pool is not running
 
 #### Removing workers
 To remove a worker you can use `Less`. 
@@ -131,19 +127,18 @@ if err := pool.Less(); err != nil {
     log.Println("cannot remove more workers", err)
 }
 ```
-Less will remove a worker from the poo, immediately reduce
-the number of worker running, and request the worker to 
+Less will remove a worker from the pool, immediately reducing
+the number of workers running, and request the worker to 
 stop processing jobs, but it won't wait until the worker 
-finally stops.
+finally stops. 
 
-These stopping workers will still be taken into account
-when the closing the pool, waiting for them to finish.
+Note: the pool will wait until all jobs finish, even those
+from those workers that were removed.
 
 The operation will fail if:
 - the minimum number of workers has been reached
-- the pool is not configured; `New` was not called
-- the pool is closed; `Close` was called
-- the pool is not running; `Start` was not called
+- the pool has already been closed
+- the pool is not running
 
 ### Job
 A job represents a task that needs to be performed constantly.
@@ -219,14 +214,13 @@ resultLogger := func(jobName string) func(error) {
 	}
 }
 
-job := func(ctx context.Context) error {
+job := wrapper.WithError(func(ctx context.Context) error {
 	err := someWorkThatCanFail()
 	return err
-}
+}, resultLogger("my-job"))
 
-pool := workers.Must(workers.New(
-	wrapper.WithError(job, resultLogger("foo"),
-)))
+var pool Pool
+pool.Start(job)
 ```
 
 [ci-badge]: https://github.com/hmoragrega/workers/workflows/CI/badge.svg

@@ -34,10 +34,10 @@ func TestWaitMiddleware_Wait(t *testing.T) {
 				<-ctx.Done()
 			})
 
-			p := workers.Must(workers.New(job, Wait(tc.wait)))
+			p := workers.Must(workers.New(Wait(tc.wait)))
 
 			poolStarted := time.Now()
-			if err := p.Start(); err != nil {
+			if err := p.Start(job); err != nil {
 				t.Fatal("cannot start pool", err)
 			}
 			jobStarted := <-stop
@@ -60,8 +60,8 @@ func TestWaitMiddleware_Cancelled(t *testing.T) {
 		close(executed)
 	})
 
-	p := workers.Must(workers.New(job, Wait(time.Second)))
-	if err := p.Start(); err != nil {
+	p := workers.Must(workers.New(Wait(time.Second)))
+	if err := p.Start(job); err != nil {
 		t.Fatal("cannot start pool", err)
 	}
 
