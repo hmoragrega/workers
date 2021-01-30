@@ -1,8 +1,9 @@
 # workers
 
+[![godoc][godoc-badge]][godoc-url]
 [![ci][ci-badge]][ci-url]
 [![coverage][coverage-badge]][coverage-url]
-[![godoc][godoc-badge]][godoc-url]
+[![goreport][goreport-badge]][goreport-url]
 
 Go package that allows to run a pool of workers to run a job concurrently in the background.
 
@@ -263,3 +264,6 @@ pool.Start(workers.NoError(job))
 
 [godoc-badge]: https://pkg.go.dev/badge/github.com/hmoragrega/workers.svg
 [godoc-url]:   https://pkg.go.dev/github.com/hmoragrega/workers
+
+[goreport-badge]: https://goreportcard.com/badge/github.com/hmoragrega/workers
+[goreport-url]: https://goreportcard.com/report/github.com/hmoragrega/workers
