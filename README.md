@@ -71,11 +71,11 @@ type Config struct {
 
 To have a pool with a tweaked config you can call `NewWithConfig`
 ```go
-pool, err := workers.NewWithConfig(workers.Config{
+pool := workers.Must(NewWithConfig(workers.Config{
    Min:     3,
    Max:     10,
    Initial: 5,
-})
+}))
 ```
 
 #### Starting the pool
@@ -197,9 +197,9 @@ still be running concurrently if there are more workers).
 
 As an exercise let's log the job result with our favourite logging library.
 ```go
-// jobLogger is a middleware that logs the result of a job
+// loggerMiddleware is a middleware that logs the result of a job
 // with "debug" or "error" level depending on the result.
-jobLogger := func(name string) workers.MiddlewareFunc {
+loggerMiddleware := func(name string) workers.MiddlewareFunc {
 	return func(job workers.Job) workers.Job {
 		return workers.JobFunc(func(ctx context.Context) error {
 			err := job.Do(ctx)
@@ -212,7 +212,7 @@ jobLogger := func(name string) workers.MiddlewareFunc {
 	}
 }
 
-pool := workers.Must(workers.New(jobLogger("my-job")))
+pool := workers.New(loggerMiddleware("my-job"))
 pool.Start(workers.JobFunc(func(ctx context.Context) error {
 	return someWork()
 }))

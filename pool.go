@@ -105,8 +105,8 @@ type Config struct {
 // New creates a new pool with the default configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func New(middlewares ...Middleware) (*Pool, error) {
-	return NewWithConfig(Config{}, middlewares...)
+func New(middlewares ...Middleware) *Pool {
+	return newDefault(middlewares...)
 }
 
 // NewWithConfig creates a new pool with an specific configuration.
@@ -114,7 +114,7 @@ func New(middlewares ...Middleware) (*Pool, error) {
 // It accepts an arbitrary number of job middlewares to run.
 func NewWithConfig(cfg Config, middlewares ...Middleware) (*Pool, error) {
 	if cfg.Initial == 0 {
-		cfg.Initial = 1
+		cfg.Initial = defaultInitial
 	}
 	if cfg.Min < 0 {
 		return nil, fmt.Errorf("%w: min %d", ErrInvalidMin, cfg.Min)
@@ -141,6 +141,21 @@ func Must(p *Pool, err error) *Pool {
 		panic(err)
 	}
 	return p
+}
+
+const (
+	defaultMin     = 0
+	defaultMax     = 0
+	defaultInitial = 1
+)
+
+func newDefault(middlewares ...Middleware) *Pool {
+	return &Pool{
+		min:     defaultMin,
+		max:     defaultMax,
+		initial: defaultInitial,
+		mws:     middlewares,
+	}
 }
 
 // Pool is a pool of workers that can be started

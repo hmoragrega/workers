@@ -30,7 +30,7 @@ func TestElapsedMiddleware(t *testing.T) {
 		return nil
 	})
 
-	p := workers.Must(workers.New(&elapsed))
+	p := workers.New(&elapsed)
 	if err := p.Start(job); err != nil {
 		t.Fatal("cannot start pool", err)
 	}

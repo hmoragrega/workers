@@ -28,7 +28,7 @@ func TestCounterMiddleware(t *testing.T) {
 		return nil
 	})
 
-	p := workers.Must(workers.New(&counter))
+	p := workers.New(&counter)
 	if err := p.Start(job); err != nil {
 		t.Fatal("cannot start pool", err)
 	}
