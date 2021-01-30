@@ -186,14 +186,14 @@ type MiddlewareFunc func(job Job) Job
 ```
 
 Some example of middleware:
-* [Counter](middleware/counter.go) counts how many jobs start and finish.
+* [Counter](middleware/counter.go) counts how many jobs start, finish and fail.
 * [Elapsed](middleware/elapsed.go) extends the counter middleware providing also:
   - the total amount of time.
   - the average time.
   - the time of the last executed job.
 * [Retry](middleware/retry.go) it will retry failed jobs a certain amount of times. 
-* [Wait](middleware/wait.go) allows to add a pause between worker jobs. (Job will
-still be running concurrently if there are more workers) 
+* [Wait](middleware/wait.go) allows to add a pause between job executions. (Job will
+still be running concurrently if there are more workers).
 
 As an exercise let's log the job result with our favourite logging library.
 ```go
