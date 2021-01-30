@@ -7,6 +7,8 @@ import (
 	"github.com/hmoragrega/workers"
 )
 
+// ErrNotRetryable should be returned by the job
+// to avoid retrying it.
 var ErrNotRetryable = errors.New("not retryable")
 
 // WithRetry is a job wrapper that allows to retry a job

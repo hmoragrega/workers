@@ -10,15 +10,37 @@ import (
 )
 
 var (
-	ErrPoolClosed     = errors.New("pool is closed")
-	ErrPoolStarted    = errors.New("pool already started")
-	ErrNotStarted     = errors.New("pool has not started")
-	ErrNotConfigured  = errors.New("pool not configured")
-	ErrInvalidMax     = errors.New("maximum workers must be equal or greater than minimum")
-	ErrInvalidMin     = errors.New("minimum workers must be at least one")
-	ErrInvalidInitial = errors.New("initial workers must match at least the minimum")
-	ErrMinReached     = errors.New("minimum number of workers reached")
-	ErrMaxReached     = errors.New("maximum number of workers reached")
+	// ErrPoolClosed is triggered when trying to start and add or remove
+	// workers from the pool after closing it.
+	ErrPoolClosed = errors.New("pool is closed")
+
+	// ErrPoolStarted is triggered when trying to start the pool when it's
+	// already running.
+	ErrPoolStarted = errors.New("pool already started")
+
+	// ErrNotStarted is returned when trying to add or remove workers from
+	// the pool after closing it.
+	ErrNotStarted = errors.New("pool has not started")
+
+	// ErrInvalidMax is triggered when configuring a pool with an invalid
+	// maximum number of workers.
+	ErrInvalidMax = errors.New("the maximum is less than the minimum workers")
+
+	// ErrInvalidMin is triggered when configuring a pool with an invalid
+	// minimum number of workers.
+	ErrInvalidMin = errors.New("negative number of minimum workers")
+
+	// ErrInvalidInitial is triggered when configuring a pool with an invalid
+	// initial number of workers.
+	ErrInvalidInitial = errors.New("the initial is less the minimum workers")
+
+	// ErrMinReached is triggered when trying to remove a worker when the
+	// pool is already running at minimum capacity.
+	ErrMinReached = errors.New("minimum number of workers reached")
+
+	// ErrMaxReached is triggered when trying to add a worker when the
+	// pool is already running at maximum capacity.
+	ErrMaxReached = errors.New("maximum number of workers reached")
 )
 
 // Job represents some work that needs to be done non-stop.
@@ -61,7 +83,7 @@ func (f MiddlewareFunc) Wrap(job Job) Job {
 // that will be running in the pool.
 type Config struct {
 	// Min indicates the minimum number of workers that can run concurrently.
-	// When 0 is given the minimum is defaulted to 1.
+	// By default the pool can have 0 workers, pausing it effectively.
 	Min int
 
 	// Max indicates the maximum number of workers that can run concurrently.
@@ -69,53 +91,40 @@ type Config struct {
 	Max int
 
 	// Initial indicates the initial number of workers that should be running.
-	// When 0 is given the minimum is used.
+	// The default value will be the greater number between 1 or the given minimum.
 	Initial int
 }
 
 // New creates a new pool with the default configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func New(job Job, middlewares ...Middleware) (*Pool, error) {
-	return NewWithConfig(job, Config{}, middlewares...)
+func New(middlewares ...Middleware) (*Pool, error) {
+	return NewWithConfig(Config{}, middlewares...)
 }
 
 // NewWithConfig creates a new pool with an specific configuration.
 //
 // It accepts an arbitrary number of job middlewares to run.
-func NewWithConfig(job Job, cfg Config, middlewares ...Middleware) (*Pool, error) {
-	if cfg.Min == 0 {
-		cfg.Min = 1
-	}
+func NewWithConfig(cfg Config, middlewares ...Middleware) (*Pool, error) {
 	if cfg.Initial == 0 {
-		cfg.Initial = cfg.Min
+		cfg.Initial = 1
 	}
-
-	if cfg.Min < 1 {
+	if cfg.Min < 0 {
 		return nil, fmt.Errorf("%w: min %d", ErrInvalidMin, cfg.Min)
 	}
-	if cfg.Max != 0 && cfg.Min > cfg.Max {
+	if cfg.Max != 0 && cfg.Max < cfg.Min {
 		return nil, fmt.Errorf("%w: max: %d, min %d", ErrInvalidMax, cfg.Max, cfg.Min)
 	}
 	if cfg.Initial < cfg.Min {
 		return nil, fmt.Errorf("%w: initial: %d, min %d", ErrInvalidInitial, cfg.Initial, cfg.Min)
 	}
 
-	for _, mw := range middlewares {
-		job = mw.Wrap(job)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	p := &Pool{
-		job:     job,
-		cfg:     &cfg,
-		ctx:     ctx,
-		cancel:  cancel,
-		stopped: make(chan struct{}),
-		done:    make(chan struct{}),
-	}
-
-	return p, nil
+	return &Pool{
+		min:     cfg.Min,
+		max:     cfg.Max,
+		initial: cfg.Initial,
+		mws:     middlewares,
+	}, nil
 }
 
 // Must checks if the result of creating a pool
@@ -130,8 +139,12 @@ func Must(p *Pool, err error) *Pool {
 // Pool is a pool of workers that can be started
 // to run a job non-stop concurrently.
 type Pool struct {
+	min     int
+	initial int
+	max     int
+
 	job     Job
-	cfg     *Config
+	mws     []Middleware
 	workers []*worker
 
 	// Current pool state.
@@ -154,22 +167,31 @@ type Pool struct {
 }
 
 // Start launches the workers and keeps them running until the pool is closed.
-func (p *Pool) Start() error {
+func (p *Pool) Start(job Job) error {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
-	if p.cfg == nil {
-		return ErrNotConfigured
-	}
 	if p.closed {
 		return ErrPoolClosed
 	}
 	if p.started {
 		return ErrPoolStarted
 	}
-	p.started = true
+	for _, mw := range p.mws {
+		job = mw.Wrap(job)
+	}
 
-	for i := 0; i < p.cfg.Initial; i++ {
+	p.job = job
+	p.started = true
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	p.stopped = make(chan struct{})
+	p.done = make(chan struct{})
+
+	initial := p.initial
+	if initial == 0 {
+		initial = 1
+	}
+	for i := 0; i < initial; i++ {
 		p.workers = append(p.workers, p.newWorker())
 	}
 
@@ -190,16 +212,13 @@ func (p *Pool) More() error {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
-	if p.cfg == nil {
-		return ErrNotConfigured
-	}
 	if p.closed {
 		return ErrPoolClosed
 	}
 	if !p.started {
 		return ErrNotStarted
 	}
-	if p.cfg.Max != 0 && len(p.workers) == p.cfg.Max {
+	if p.max != 0 && len(p.workers) == p.max {
 		return ErrMaxReached
 	}
 
@@ -218,14 +237,11 @@ func (p *Pool) Less() error {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
-	if p.cfg == nil {
-		return ErrNotConfigured
-	}
 	if p.closed {
 		return ErrPoolClosed
 	}
 	current := len(p.workers)
-	if current == p.cfg.Min {
+	if current == p.min {
 		return ErrMinReached
 	}
 

@@ -63,7 +63,7 @@ func TestPool_New(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, got := NewWithConfig(dummyJob, tc.config)
+			_, got := NewWithConfig(tc.config)
 			if !errors.Is(got, tc.want) {
 				t.Fatalf("got error %+v, want: %+v", got, tc.want)
 			}
@@ -77,12 +77,12 @@ func TestPool_MustPanic(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected panic")
 		}
-		if !errors.Is(err.(error), ErrInvalidMin) {
-			t.Fatalf("unexpected panic error; got %+v, want %v", err, ErrInvalidMin)
+		if !errors.Is(err.(error), ErrInvalidMax) {
+			t.Fatalf("unexpected panic error; got %+v, want %v", err, ErrInvalidMax)
 		}
 	}()
 
-	Must(NewWithConfig(dummyJob, Config{Min: -1}))
+	Must(NewWithConfig(Config{Max: -1}))
 }
 
 func TestPool_Start(t *testing.T) {
@@ -105,14 +105,14 @@ func TestPool_Start(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := Must(NewWithConfig(dummyJob, tc.config))
+			p := Must(NewWithConfig(tc.config))
 			t.Cleanup(func() {
 				if err := p.CloseWIthTimeout(time.Second); err != nil {
 					t.Fatal("cannot stop pool", err)
 				}
 			})
 
-			if err := p.Start(); err != nil {
+			if err := p.Start(dummyJob); err != nil {
 				t.Fatalf("unexpected error starting poole. got %+v", err)
 			}
 			if got := p.Current(); got != tc.want {
@@ -123,33 +123,24 @@ func TestPool_Start(t *testing.T) {
 }
 
 func TestPool_StartErrors(t *testing.T) {
-	t.Run("pool not configured", func(t *testing.T) {
-		var p Pool
-		if got, want := p.Start(), ErrNotConfigured; got != want {
-			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
-		}
-	})
-
 	t.Run("pool closed", func(t *testing.T) {
-		p := Must(New(dummyJob))
-
+		var p Pool
 		if err := p.CloseWIthTimeout(time.Second); err != nil {
 			t.Fatalf("unexpected error closing an uninitialized pool; got %+v", err)
 		}
 
-		if got, want := p.Start(), ErrPoolClosed; got != want {
+		if got, want := p.Start(dummyJob), ErrPoolClosed; got != want {
 			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
 		}
 	})
 
 	t.Run("pool already started", func(t *testing.T) {
-		p := Must(New(dummyJob))
-
-		if err := p.Start(); err != nil {
+		var p Pool
+		if err := p.Start(dummyJob); err != nil {
 			t.Fatalf("unexpected error starting for the first time; got %+v", err)
 		}
 
-		if got, want := p.Start(), ErrPoolStarted; got != want {
+		if got, want := p.Start(dummyJob), ErrPoolStarted; got != want {
 			t.Fatalf("unexpected error starting pool for the second time; got %+v, want %+v", got, want)
 		}
 	})
@@ -164,7 +155,7 @@ func TestPool_More(t *testing.T) {
 	}{
 		{
 			name: "max reached",
-			pool: Must(NewWithConfig(dummyJob, Config{
+			pool: Must(NewWithConfig(Config{
 				Max: 1,
 			})),
 			wantCurrent: 1,
@@ -172,7 +163,7 @@ func TestPool_More(t *testing.T) {
 		},
 		{
 			name: "ok",
-			pool: Must(NewWithConfig(dummyJob, Config{
+			pool: Must(NewWithConfig(Config{
 				Max: 2,
 			})),
 			wantCurrent: 2,
@@ -184,7 +175,7 @@ func TestPool_More(t *testing.T) {
 			t.Cleanup(func() {
 				_ = tc.pool.CloseWIthTimeout(time.Second)
 			})
-			if err := tc.pool.Start(); err != nil {
+			if err := tc.pool.Start(dummyJob); err != nil {
 				t.Fatalf("unexpected error starting pool: %+v", err)
 			}
 
@@ -200,16 +191,8 @@ func TestPool_More(t *testing.T) {
 }
 
 func TestPool_MoreErrors(t *testing.T) {
-	t.Run("pool not configured", func(t *testing.T) {
-		var p Pool
-		if got, want := p.More(), ErrNotConfigured; got != want {
-			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
-		}
-	})
-
 	t.Run("pool closed", func(t *testing.T) {
-		p := Must(New(dummyJob))
-
+		var p Pool
 		if err := p.Close(context.Background()); err != nil {
 			t.Fatalf("unexpected error closing an uninitialized pool; got %+v", err)
 		}
@@ -220,8 +203,7 @@ func TestPool_MoreErrors(t *testing.T) {
 	})
 
 	t.Run("pool not started", func(t *testing.T) {
-		p := Must(New(dummyJob))
-
+		var p Pool
 		if got, want := p.More(), ErrNotStarted; got != want {
 			t.Fatalf("unexpected error starting pool for the second time; got %+v, want %+v", got, want)
 		}
@@ -230,14 +212,14 @@ func TestPool_MoreErrors(t *testing.T) {
 
 func TestPool_Less(t *testing.T) {
 	t.Run("reduce number of workers", func(t *testing.T) {
-		p := Must(New(dummyJob))
+		var p Pool
 		t.Cleanup(func() {
 			if err := p.Close(context.Background()); err != nil {
 				t.Fatal("cannot stop pool", err)
 			}
 		})
 
-		if err := p.Start(); err != nil {
+		if err := p.Start(dummyJob); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 		if err := p.More(); err != nil {
@@ -256,38 +238,33 @@ func TestPool_Less(t *testing.T) {
 	})
 
 	t.Run("error returned if trying to go below the minimum number of workers", func(t *testing.T) {
-		p := Must(New(dummyJob))
+		var p Pool
 		t.Cleanup(func() {
 			if err := p.CloseWIthTimeout(time.Second); err != nil {
 				t.Fatal("cannot stop pool", err)
 			}
 		})
 
-		if err := p.Start(); err != nil {
+		if err := p.Start(dummyJob); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 		if current := p.Current(); current != 1 {
 			t.Fatalf("unexpected number of workers: got %d, want 1", current)
 		}
 
+		if err := p.Less(); err != nil {
+			t.Fatal("unexpected error removing last workers", err)
+		}
 		if got := p.Less(); got != ErrMinReached {
 			t.Fatalf("got error %+v, want %v", got, ErrMinReached)
 		}
-		if got := p.Current(); got != 1 {
+		if got := p.Current(); got != 0 {
 			t.Fatalf("unexpected number of workers: got %d, want 1", got)
 		}
 	})
 
-	t.Run("error pool not configured", func(t *testing.T) {
-		var p Pool
-		if got, want := p.Less(), ErrNotConfigured; got != want {
-			t.Fatalf("unexpected error starting pool; got %+v, want %+v", got, want)
-		}
-	})
-
 	t.Run("error pool closed", func(t *testing.T) {
-		p := Must(New(dummyJob))
-
+		var p Pool
 		if err := p.Close(context.Background()); err != nil {
 			t.Fatalf("unexpected error closing an uninitialized pool; got %+v", err)
 		}
@@ -300,7 +277,7 @@ func TestPool_Less(t *testing.T) {
 
 func TestPool_Close(t *testing.T) {
 	t.Run("close successfully a non started pool", func(t *testing.T) {
-		p := Must(New(dummyJob))
+		var p Pool
 		got := p.Close(context.Background())
 		if !errors.Is(got, nil) {
 			t.Fatalf("unexpected error: %+v, want nil", got)
@@ -308,8 +285,8 @@ func TestPool_Close(t *testing.T) {
 	})
 
 	t.Run("close successfully a started pool", func(t *testing.T) {
-		p := Must(New(dummyJob))
-		if err := p.Start(); err != nil {
+		var p Pool
+		if err := p.Start(dummyJob); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 
@@ -320,14 +297,15 @@ func TestPool_Close(t *testing.T) {
 	})
 
 	t.Run("close timeout error", func(t *testing.T) {
+		var p Pool
 		running := make(chan struct{})
-		p := Must(New(JobFunc(func(_ context.Context) {
+		job := JobFunc(func(_ context.Context) {
 			// signal that we are running the job
 			running <- struct{}{}
 			// block the job so the call to close times out
 			running <- struct{}{}
-		})))
-		if err := p.Start(); err != nil {
+		})
+		if err := p.Start(job); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 
@@ -345,11 +323,12 @@ func TestPool_Close(t *testing.T) {
 	})
 
 	t.Run("close cancelled error", func(t *testing.T) {
-		p := Must(New(JobFunc(func(_ context.Context) {
+		var p Pool
+		job := JobFunc(func(_ context.Context) {
 			block := make(chan struct{})
 			<-block
-		})))
-		if err := p.Start(); err != nil {
+		})
+		if err := p.Start(job); err != nil {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 
@@ -389,8 +368,8 @@ func BenchmarkPool(b *testing.B) {
 		b.Run(tc.name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				p := Must(New(slowJob))
-				if err := p.Start(); err != nil {
+				var p Pool
+				if err := p.Start(slowJob); err != nil {
 					b.Fatal("cannot start pool", err)
 				}
 				for j := 0; j < tc.count; j++ {
@@ -423,7 +402,8 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 		startRemoving = make(chan struct{})
 	)
 
-	p := Must(New(JobFunc(func(ctx context.Context) {
+	var p Pool
+	job := JobFunc(func(ctx context.Context) {
 		if atomic.AddUint32(&count, 1) == uint32(headStart) {
 			close(startRemoving)
 		}
@@ -431,9 +411,9 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 		case <-ctx.Done():
 		case <-time.NewTimer(100 * time.Millisecond).C:
 		}
-	})))
+	})
 
-	if err := p.Start(); err != nil {
+	if err := p.Start(job); err != nil {
 		t.Fatal("cannot start pool", err)
 	}
 
