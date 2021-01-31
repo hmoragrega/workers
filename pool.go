@@ -115,6 +115,9 @@ func New(middlewares ...Middleware) *Pool {
 func NewWithConfig(cfg Config, middlewares ...Middleware) (*Pool, error) {
 	if cfg.Initial == 0 {
 		cfg.Initial = defaultInitial
+		if cfg.Min > cfg.Initial {
+			cfg.Initial = cfg.Min
+		}
 	}
 	if cfg.Min < 0 {
 		return nil, fmt.Errorf("%w: min %d", ErrInvalidMin, cfg.Min)
