@@ -63,6 +63,25 @@ func (f JobFunc) Do(ctx context.Context) error {
 	return f(ctx)
 }
 
+// JobBuilder is a job that needs to be build on the
+// initialization for each worker.
+type JobBuilder interface {
+	// New generates a new job for each workers.
+	//
+	// Its useful for jobs that need to share data between
+	// calls
+	New() Job
+}
+
+// JobBuilderFunc is a type of job that shares
+// requires an initialization on each worker.
+type JobBuilderFunc func() Job
+
+// New builds the new job.
+func (f JobBuilderFunc) New() Job {
+	return f()
+}
+
 // Middleware is a function that wraps the job and can
 // be used to extend the functionality of the pool.
 type Middleware interface {
@@ -170,9 +189,9 @@ type Pool struct {
 	max     int
 
 	// job and its workers.
-	job     Job
-	mws     []Middleware
-	workers []*worker
+	jobBuilder JobBuilder
+	mws        []Middleware
+	workers    []*worker
 
 	// Current pool state.
 	started bool
@@ -197,8 +216,19 @@ type Pool struct {
 	mx sync.RWMutex
 }
 
+// StartBuilder launches the workers and keeps them running until the pool is closed.
+func (p *Pool) StartBuilder(jobBuilder JobBuilder) error {
+	return p.start(jobBuilder)
+}
+
 // Start launches the workers and keeps them running until the pool is closed.
 func (p *Pool) Start(job Job) error {
+	return p.start(JobBuilderFunc(func() Job {
+		return job
+	}))
+}
+
+func (p *Pool) start(jobBuilder JobBuilder) error {
 	p.mx.Lock()
 	defer p.mx.Unlock()
 
@@ -213,8 +243,8 @@ func (p *Pool) Start(job Job) error {
 		initial = 1
 	}
 
+	p.jobBuilder = jobBuilder
 	p.started = true
-	p.job = Wrap(job, p.mws...)
 	p.running = make(chan int)
 	p.done = make(chan struct{})
 	p.workers = make([]*worker, initial)
@@ -372,9 +402,9 @@ func (p *Pool) close() error {
 	return nil
 }
 
-// CloseWIthTimeout closes the pool waiting
+// CloseWithTimeout closes the pool waiting
 // for a certain amount of time.
-func (p *Pool) CloseWIthTimeout(timeout time.Duration) error {
+func (p *Pool) CloseWithTimeout(timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -392,7 +422,7 @@ func (p *Pool) newWorker() *worker {
 		defer func() {
 			p.running <- -1
 		}()
-		w.work(ctx, p.job)
+		w.work(ctx, Wrap(p.jobBuilder.New(), p.mws...))
 	}()
 
 	return w

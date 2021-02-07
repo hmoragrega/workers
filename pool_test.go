@@ -110,7 +110,7 @@ func TestPool_Start(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := Must(NewWithConfig(tc.config))
 			t.Cleanup(func() {
-				if err := p.CloseWIthTimeout(time.Second); err != nil {
+				if err := p.CloseWithTimeout(time.Second); err != nil {
 					t.Fatal("cannot stop pool", err)
 				}
 			})
@@ -128,7 +128,7 @@ func TestPool_Start(t *testing.T) {
 func TestPool_StartErrors(t *testing.T) {
 	t.Run("pool closed", func(t *testing.T) {
 		var p Pool
-		if err := p.CloseWIthTimeout(time.Second); err != nil {
+		if err := p.CloseWithTimeout(time.Second); err != nil {
 			t.Fatalf("unexpected error closing an uninitialized pool; got %+v", err)
 		}
 
@@ -176,7 +176,7 @@ func TestPool_More(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Cleanup(func() {
-				_ = tc.pool.CloseWIthTimeout(time.Second)
+				_ = tc.pool.CloseWithTimeout(time.Second)
 			})
 			if err := tc.pool.Start(dummyJob); err != nil {
 				t.Fatalf("unexpected error starting pool: %+v", err)
@@ -243,7 +243,7 @@ func TestPool_Less(t *testing.T) {
 	t.Run("error minimum number of workers reached", func(t *testing.T) {
 		var p Pool
 		t.Cleanup(func() {
-			if err := p.CloseWIthTimeout(time.Second); err != nil {
+			if err := p.CloseWithTimeout(time.Second); err != nil {
 				t.Fatal("cannot stop pool", err)
 			}
 		})
@@ -300,7 +300,7 @@ func TestPool_Close(t *testing.T) {
 			t.Fatalf("unexpected error starting pool: %+v", err)
 		}
 
-		got := p.CloseWIthTimeout(time.Second)
+		got := p.CloseWithTimeout(time.Second)
 		if !errors.Is(got, nil) {
 			t.Fatalf("unexpected error closing pool: %+v, want nil", got)
 		}
@@ -321,7 +321,7 @@ func TestPool_Close(t *testing.T) {
 		}
 
 		<-running
-		got := p.CloseWIthTimeout(25 * time.Millisecond)
+		got := p.CloseWithTimeout(25 * time.Millisecond)
 		if !errors.Is(got, context.DeadlineExceeded) {
 			t.Fatalf("unexpected error closing pool: %+v, want %+v", got, context.DeadlineExceeded)
 		}
