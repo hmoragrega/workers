@@ -212,14 +212,20 @@ func TestPool_Run(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	err := pool.Run(ctx, JobFunc(func(ctx context.Context) error {
+	job := JobFunc(func(ctx context.Context) error {
 		cancel()
 		<-ctx.Done()
 		return nil
-	}))
+	})
 
+	err := pool.Run(ctx, job)
 	if err != nil {
 		t.Fatal("unexpected error running the pool", err)
+	}
+
+	err = pool.Run(ctx, job)
+	if !errors.Is(err, ErrPoolClosed) {
+		t.Fatalf("expected failure running a pool twice, got nil, want %v", ErrPoolClosed)
 	}
 }
 
