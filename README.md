@@ -14,33 +14,34 @@ Create a pool and start running a job.
 package main
 
 import (
-    "log"
-    "context"
-    "time"
+	"context"
+	"log"
+	"os"
+	"os/signal"
 
-    "github.com/hmoragrega/workers"
+	"github.com/hmoragrega/workers"
 )
 
 func main() {
-    var pool Pool
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
 
-    job := workers.JobFunc(func(ctx context.Context) error {
-        // my job code 
-        return nil
-    })
+	go func() {
+		<-stop
+		cancel()
+	}()
 
-    if err := pool.Start(job); err != nil {
-        log.Fatal("cannot start pool", err)
-    }
+	job := workers.JobFunc(func(ctx context.Context) error {
+		// my job code 
+		return nil
+	})
 
-    defer func() {
-        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-        defer cancel()
+	var pool workers.Pool
 
-        if err := pool.Close(ctx); err != nil {
-            log.Fatal("cannot close pool", err)
-        }    
-    }()
+	if err := pool.Run(ctx, job); err != nil {
+		log.Fatal("job pool failed", err)
+	}
 }
 ```
 
@@ -55,34 +56,54 @@ behaviour
 
 ```go
 type Config struct {
-    // Min indicates the minimum number of workers that can run concurrently.
-    // By default the pool can have 0 workers, pausing it effectively.
-    Min int
+	// Min indicates the minimum number of workers that can run concurrently.
+	// By default the pool can have 0 workers, pausing it effectively.
+	Min int
 
-    // Max indicates the maximum number of workers that can run concurrently.
-    // the default "0" indicates an infinite number of workers.
-    Max int
+	// Max indicates the maximum number of workers that can run concurrently.
+	// the default "0" indicates an infinite number of workers.
+	Max int
 
-    // Initial indicates the initial number of workers that should be running.
-    // The default value will be the greater number between 1 or the given minimum.
-    Initial int
+	// Initial indicates the initial number of workers that should be running.
+	// The default value will be the greater number between 1 or the given minimum.
+	Initial int
 }
 ```
 
 To have a pool with a tweaked config you can call `NewWithConfig`
 ```go
 pool := workers.Must(NewWithConfig(workers.Config{
-   Min:     3,
-   Max:     10,
-   Initial: 5,
+	Min:     3,
+	Max:     10,
+	Initial: 5,
 }))
 ```
 
+#### Running non-stop
+If you want to keep the pool running in a blocking call you
+ can call `Run` or `RunWithBuilder`.   
+   
+In this mode the pool will run until the given context is 
+terminated. 
+
+The pool then will be closed without a timeout.
+
+```go
+var pool workers.Pool
+
+if err := pool.Run(job); err != nil {
+	log.Println("pool  the pool", err)
+}
+```
+
+Alternatively you can start and stop the pool to have 
+a fine-grained control of the pool live-cycle.
+
 #### Starting the pool
-To start the pool give it a job to run:
+To start the pool give it a job (or a [job builder](#builder-jobs)) to run:
 ```go
 if err := pool.Start(job); err != nil {
-    log.Println("cannot start the pool", err)
+	log.Println("cannot start the pool", err)
 }
 ```
 The operation will fail if:
@@ -96,7 +117,7 @@ given context is cancelled.
 
 ```go
 if err := pool.Close(ctx); err != nil {
-    log.Println("cannot start the pool", err)
+	log.Println("cannot start the pool", err)
 }
 ```
  
@@ -114,7 +135,7 @@ Alternative `CloseWithTimeout` can be used passing a
 To add a new worker to the pool you can call
 ```go
 if err := pool.More(); err != nil {
-    log.Println("cannot add more workers", err)
+	log.Println("cannot add more workers", err)
 }
 ```
 The operation will fail if:
@@ -126,7 +147,7 @@ The operation will fail if:
 To remove a worker you can use `Less`. 
 ```go
 if err := pool.Less(); err != nil {
-    log.Println("cannot remove more workers", err)
+	log.Println("cannot remove more workers", err)
 }
 ```
 Less will remove a worker from the pool, immediately reducing
@@ -169,11 +190,13 @@ To extend the functionality of jobs you can use builders, middlewares
 or wrappers.
 
 #### Builder Jobs
-Some time you want to share data across job execution within the same worker.
-For example, you could share a buffer of pre-allocated memory. 
+Sometimes you want to share data across job execution within the same worker.
 
-In this case you can use a job builder to indicate that every worker that 
-joins the pool will have its own job.
+For this you can use a job builder to indicate that every worker that 
+joins the pool will have its own job.   
+
+**NOTE:** in this case, the jobs are not going to be running concurrently, 
+making much easier to avoid data races.     
 
 ```go
 // JobBuilder is a job that needs to be built during
@@ -183,7 +206,31 @@ type JobBuilder interface {
 	New() Job
 }
 ```
-In this case you will have to call `StartWithBuilder` method to start the pool.
+You will have to call `StartWithBuilder` method to start the pool with a job builder.
+```go
+var (
+	numberOfWorkers = 3
+	workSlots       = make([]int, numberOfWorkers)	
+	workerID int32
+)
+
+builder := JobBuilderFunc(func() Job {
+	workerID := atomic.AddInt32(&workerID, 1)
+
+	var count int
+	return JobFunc(func(ctx context.Context) error {
+		// count is not shared across worker goroutines
+		// no need to protect it against data races
+		count++
+		// same for the slice, since each worker
+		// updated only its own index.
+		workSlots[workerID-1] = count
+		return nil
+   	})
+})
+
+p.StartWithBuilder(builder)
+```
 
 #### Job Middleware 
 A middleware allows to extend the job capabilities
@@ -239,7 +286,7 @@ pool.Start(workers.JobFunc(func(ctx context.Context) error {
 If you need to add a middleware before starting the job instead of on pool creating
 there's the little handy function `Wrap` that will easy applying them for you.
 
-```
+```go
 // Wrap is a helper to apply a chain of middleware to a job.
 func Wrap(job Job, middlewares ...Middleware) Job
 ```
@@ -249,7 +296,7 @@ var pool Pool
 
 job := workers.JobFunc(func(ctx context.Context) (err error) {
   	// work
-    return err
+	return err
 }
 
 pool.Start(workers.Wrap(job, jobLogger("my-job")))
@@ -266,7 +313,7 @@ having to return error from you job function.
 
 ```go
 job := func(ctx context.Context) {
-    // work
+	// work
 }
 
 var pool workers.Pool 

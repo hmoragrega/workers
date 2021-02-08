@@ -70,11 +70,11 @@ type JobBuilder interface {
 	New() Job
 }
 
-// JobBuilderFunc is a type of job that shares
-// requires an initialization on each worker.
+// JobBuilderFunc is a helper to use function as
+// job builders.
 type JobBuilderFunc func() Job
 
-// New builds the new job.
+// New builds the new job using the underlying function.
 func (f JobBuilderFunc) New() Job {
 	return f()
 }
@@ -213,8 +213,8 @@ type Pool struct {
 	mx sync.RWMutex
 }
 
-// StartBuilder launches the workers and keeps them running until the pool is closed.
-func (p *Pool) StartBuilder(jobBuilder JobBuilder) error {
+// StartWithBuilder launches the workers and keeps them running until the pool is closed.
+func (p *Pool) StartWithBuilder(jobBuilder JobBuilder) error {
 	return p.start(jobBuilder)
 }
 
@@ -223,6 +223,31 @@ func (p *Pool) Start(job Job) error {
 	return p.start(JobBuilderFunc(func() Job {
 		return job
 	}))
+}
+
+// Run is a blocking call that will start the pool and keep it
+// running until the context is terminated.
+//
+// The pool then will be stopped without a timeout
+func (p *Pool) Run(ctx context.Context, job Job) error {
+	return p.RunWithBuilder(ctx, JobBuilderFunc(func() Job {
+		return job
+	}))
+}
+
+// RunWithBuilder is a blocking call that will start the
+// pool with a job builder and keep it running until the
+// context is terminated.
+//
+// The pool then will be stopped without a timeout
+func (p *Pool) RunWithBuilder(ctx context.Context, jobBuilder JobBuilder) error {
+	if err := p.StartWithBuilder(jobBuilder); err != nil {
+		return err
+	}
+
+	<-ctx.Done()
+
+	return p.Close(context.Background())
 }
 
 func (p *Pool) start(jobBuilder JobBuilder) error {
