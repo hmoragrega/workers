@@ -215,7 +215,7 @@ var (
 )
 
 builder := JobBuilderFunc(func() Job {
-	workerID := atomic.AddInt32(&workerID, 1)
+	id := atomic.AddInt32(&workerID, 1)
 
 	var count int
 	return JobFunc(func(ctx context.Context) error {
@@ -224,7 +224,7 @@ builder := JobBuilderFunc(func() Job {
 		count++
 		// same for the slice, since each worker
 		// updated only its own index.
-		workSlots[workerID-1] = count
+		workSlots[id-1] = count
 		return nil
    	})
 })
