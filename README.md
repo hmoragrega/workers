@@ -223,7 +223,7 @@ builder := JobBuilderFunc(func() Job {
 		// no need to protect it against data races
 		count++
 		// same for the slice, since each worker
-		// updated only its own index.
+		// updates only its own index.
 		workSlots[id-1] = count
 		return nil
    	})
