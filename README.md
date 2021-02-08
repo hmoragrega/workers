@@ -165,7 +165,25 @@ Simple jobs can use the helper `JobFunc` to comply with the interface
 type JobFunc func(ctx context.Context) error
 ```
 
-To extend the functionality of jobs you can use middlewares or wrappers.
+To extend the functionality of jobs you can use builders, middlewares
+or wrappers.
+
+#### Builder Jobs
+Some time you want to share data across job execution within the same worker.
+For example, you could share a buffer of pre-allocated memory. 
+
+In this case you can use a job builder to indicate that every worker that 
+joins the pool will have its own job.
+
+```go
+// JobBuilder is a job that needs to be built during
+// the initialization for each worker.
+type JobBuilder interface {
+	// New generates a new job for a new worker.
+	New() Job
+}
+```
+In this case you will have to call `StartWithBuilder` method to start the pool.
 
 #### Job Middleware 
 A middleware allows to extend the job capabilities

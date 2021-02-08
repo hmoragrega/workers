@@ -63,13 +63,10 @@ func (f JobFunc) Do(ctx context.Context) error {
 	return f(ctx)
 }
 
-// JobBuilder is a job that needs to be build on the
-// initialization for each worker.
+// JobBuilder is a job that needs to be built during
+// the initialization for each worker.
 type JobBuilder interface {
-	// New generates a new job for each workers.
-	//
-	// Its useful for jobs that need to share data between
-	// calls
+	// New generates a new job for a new worker.
 	New() Job
 }
 
