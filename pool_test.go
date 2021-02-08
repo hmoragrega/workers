@@ -149,6 +149,80 @@ func TestPool_StartErrors(t *testing.T) {
 	})
 }
 
+func TestPool_StartWithBuilder(t *testing.T) {
+	numWorkers := 3
+
+	p := Must(NewWithConfig(Config{
+		Initial: numWorkers,
+	}))
+
+	var builds int32
+	var buildsWG sync.WaitGroup
+	buildsWG.Add(numWorkers)
+
+	counters := make([]int, numWorkers)
+	var countersWG sync.WaitGroup
+	countersWG.Add(numWorkers)
+
+	builder := JobBuilderFunc(func() Job {
+		workerID := atomic.AddInt32(&builds, 1)
+
+		var count int
+		buildsWG.Done()
+		return JobFunc(func(ctx context.Context) error {
+			// count is not shared across worker goroutines
+			// no need to protect it against data races
+			count++
+			// same for the slice, since each worker
+			// updated only its own index.
+			counters[workerID-1] = count
+
+			if count == 10 {
+				countersWG.Done()
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			return nil
+		})
+	})
+
+	if err := p.StartWithBuilder(builder); err != nil {
+		t.Fatalf("unexpected error starting poole. got %+v", err)
+	}
+
+	buildsWG.Wait()
+	if int(builds) != numWorkers {
+		t.Fatalf("unexpected nnumber of job builds, got %d, want: %d", builds, numWorkers)
+	}
+
+	countersWG.Wait()
+	if err := p.CloseWithTimeout(time.Second); err != nil {
+		t.Fatal("cannot stop pool", err)
+	}
+
+	for i, c := range counters {
+		if c != 10 {
+			t.Fatalf("unexpected counter for worker %d: got %d, want 10", i+1, c)
+		}
+	}
+}
+
+func TestPool_Run(t *testing.T) {
+	var pool Pool
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	err := pool.Run(ctx, JobFunc(func(ctx context.Context) error {
+		cancel()
+		<-ctx.Done()
+		return nil
+	}))
+
+	if err != nil {
+		t.Fatal("unexpected error running the pool", err)
+	}
+}
+
 func TestPool_More(t *testing.T) {
 	testCases := []struct {
 		name        string
