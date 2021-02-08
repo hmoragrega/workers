@@ -91,8 +91,8 @@ The pool then will be closed without a timeout.
 ```go
 var pool workers.Pool
 
-if err := pool.Run(job); err != nil {
-	log.Println("pool  the pool", err)
+if err := pool.Run(ctx, job); err != nil {
+	log.Println("pool ended with error", err)
 }
 ```
 
