@@ -3,6 +3,7 @@ package workers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 	"sync"
@@ -226,6 +227,23 @@ func TestPool_Run(t *testing.T) {
 	err = pool.Run(ctx, job)
 	if !errors.Is(err, ErrPoolClosed) {
 		t.Fatalf("expected failure running a pool twice, got nil, want %v", ErrPoolClosed)
+	}
+}
+
+func TestPool_RunStopOnErrors(t *testing.T) {
+	pool, err := NewWithConfig(Config{StopOnErrors: true})
+	if err != nil {
+		t.Fatal("cannot build the pool", err)
+	}
+
+	dummyError := errors.New("some error")
+	job := JobFunc(func(ctx context.Context) error {
+		return dummyError
+	})
+
+	err = pool.Run(context.Background(), job)
+	if !errors.Is(err, dummyError) {
+		t.Fatalf("unexpected error running the pool, want %v got %v", dummyError, err)
 	}
 }
 
@@ -462,29 +480,36 @@ func TestPool_ConcurrencySafety(t *testing.T) {
 		t.Fatal("cannot start pool", err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	errs := make(chan error, 2)
 
-	go func() {
+	go func(t *testing.T) {
 		for i := 0; i < rand.Intn(total); i++ {
 			if err := p.More(); err != nil {
-				t.Fatal("cannot add worker", err)
+				errs <- fmt.Errorf("cannot add worker: %v", err)
+				return
 			}
 		}
-		wg.Done()
-	}()
+		errs <- nil
+	}(t)
 
-	go func() {
+	go func(t *testing.T) {
 		<-startRemoving
 		for i := 0; i < rand.Intn(total); i++ {
 			if err := p.Less(); err != nil && !errors.Is(err, ErrMinReached) {
-				t.Fatal("cannot remove worker", err)
+				errs <- fmt.Errorf("cannot remove worker: %v", err)
+				return
 			}
 		}
-		wg.Done()
-	}()
+		errs <- nil
+	}(t)
 
-	wg.Wait()
+	for i := 0; i < 2; i++ {
+		err := <-errs
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	if err := p.Close(ctx); err != nil {
 		t.Fatal("cannot close pool", err)
 	}

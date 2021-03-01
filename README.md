@@ -67,6 +67,9 @@ type Config struct {
 	// Initial indicates the initial number of workers that should be running.
 	// The default value will be the greater number between 1 or the given minimum.
 	Initial int
+
+	// StopOnErrors indicates whether the pool should stop when job a returns an error.
+	StopOnErrors bool
 }
 ```
 

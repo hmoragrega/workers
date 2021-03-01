@@ -116,6 +116,9 @@ type Config struct {
 	// Initial indicates the initial number of workers that should be running.
 	// The default value will be the greater number between 1 or the given minimum.
 	Initial int
+
+	// StopOnErrors indicates whether the pool should stop when job a returns an error.
+	StopOnErrors bool
 }
 
 // New creates a new pool with the default configuration.
@@ -146,10 +149,11 @@ func NewWithConfig(cfg Config, middlewares ...Middleware) (*Pool, error) {
 	}
 
 	return &Pool{
-		min:     cfg.Min,
-		max:     cfg.Max,
-		initial: cfg.Initial,
-		mws:     middlewares,
+		min:          cfg.Min,
+		max:          cfg.Max,
+		initial:      cfg.Initial,
+		stopOnErrors: cfg.StopOnErrors,
+		mws:          middlewares,
 	}, nil
 }
 
@@ -181,9 +185,10 @@ func newDefault(middlewares ...Middleware) *Pool {
 // to run a job non-stop concurrently.
 type Pool struct {
 	// config
-	min     int
-	initial int
-	max     int
+	min          int
+	initial      int
+	max          int
+	stopOnErrors bool
 
 	// job and its workers.
 	jobBuilder JobBuilder
@@ -209,6 +214,10 @@ type Pool struct {
 	// will be closed to signal the pool
 	// has finished in a clean way.
 	done chan struct{}
+
+	// will contain the error that trigger
+	// the stop when "stop on errors" is true
+	workerErr error
 
 	mx sync.RWMutex
 }
@@ -245,7 +254,10 @@ func (p *Pool) RunWithBuilder(ctx context.Context, jobBuilder JobBuilder) error 
 		return err
 	}
 
-	<-ctx.Done()
+	select {
+	case <-ctx.Done():
+	case <-p.ctx.Done():
+	}
 
 	return p.Close(context.Background())
 }
@@ -278,8 +290,8 @@ func (p *Pool) start(jobBuilder JobBuilder) error {
 	wg.Add(initial)
 	for i := 0; i < initial; i++ {
 		go func(i int) {
+			defer wg.Done()
 			p.workers[i] = p.newWorker()
-			wg.Done()
 		}(i)
 	}
 
@@ -399,7 +411,7 @@ func (p *Pool) Close(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-p.done:
-		return nil
+		return p.workerErr
 	}
 }
 
@@ -436,7 +448,8 @@ func (p *Pool) CloseWithTimeout(timeout time.Duration) error {
 func (p *Pool) newWorker() *worker {
 	ctx, cancel := context.WithCancel(p.ctx)
 	w := &worker{
-		cancel: cancel,
+		cancel:       cancel,
+		stopOnErrors: p.stopOnErrors,
 	}
 
 	p.running <- 1
@@ -444,23 +457,35 @@ func (p *Pool) newWorker() *worker {
 		defer func() {
 			p.running <- -1
 		}()
-		w.work(ctx, Wrap(p.jobBuilder.New(), p.mws...))
+		err := w.work(ctx, Wrap(p.jobBuilder.New(), p.mws...))
+		if err != nil {
+			p.mx.Lock()
+			if p.workerErr == nil {
+				p.workerErr = err
+			}
+			p.mx.Unlock()
+			p.cancel()
+		}
 	}()
 
 	return w
 }
 
 type worker struct {
-	cancel func()
+	cancel       func()
+	stopOnErrors bool
 }
 
-func (w *worker) work(ctx context.Context, job Job) {
+func (w *worker) work(ctx context.Context, job Job) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		default:
-			_ = job.Do(ctx)
+			err := job.Do(ctx)
+			if err != nil && !errors.Is(err, context.Canceled) && w.stopOnErrors {
+				return err
+			}
 		}
 	}
 }
